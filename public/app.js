@@ -1,0 +1,1103 @@
+const elements = {
+  provider: document.querySelector("#provider"),
+  apiKey: document.querySelector("#apiKey"),
+  apiKeyLabel: document.querySelector("#apiKeyLabel"),
+  rememberKey: document.querySelector("#rememberKey"),
+  credentialSessionLine: document.querySelector("#credentialSessionLine"),
+  googleAuthPanel: document.querySelector("#googleAuthPanel"),
+  googleAuthState: document.querySelector("#googleAuthState"),
+  googleAuthHint: document.querySelector("#googleAuthHint"),
+  googleConnectButton: document.querySelector("#googleConnectButton"),
+  googleDisconnectButton: document.querySelector("#googleDisconnectButton"),
+  bookText: document.querySelector("#bookText"),
+  fileInput: document.querySelector("#fileInput"),
+  sampleButton: document.querySelector("#sampleButton"),
+  clearTextButton: document.querySelector("#clearTextButton"),
+  charCount: document.querySelector("#charCount"),
+  costEstimate: document.querySelector("#costEstimate"),
+  voice: document.querySelector("#voice"),
+  language: document.querySelector("#language"),
+  speed: document.querySelector("#speed"),
+  speedValue: document.querySelector("#speedValue"),
+  segmentChars: document.querySelector("#segmentChars"),
+  lowLatency: document.querySelector("#lowLatency"),
+  lowLatencyLine: document.querySelector("#lowLatencyLine"),
+  lowLatencyLabel: document.querySelector("#lowLatencyLabel"),
+  textNormalization: document.querySelector("#textNormalization"),
+  textNormalizationLine: document.querySelector("#textNormalizationLine"),
+  audio: document.querySelector("#audio"),
+  startButton: document.querySelector("#startButton"),
+  stopButton: document.querySelector("#stopButton"),
+  downloadButton: document.querySelector("#downloadButton"),
+  statusText: document.querySelector("#statusText"),
+  segmentText: document.querySelector("#segmentText"),
+  progressBar: document.querySelector("#progressBar"),
+  bufferReadout: document.querySelector("#bufferReadout"),
+  waveCanvas: document.querySelector("#waveCanvas")
+};
+
+const GEMINI_VOICES = [
+  { value: "Kore", label: "Kore - Firm" },
+  { value: "Puck", label: "Puck - Upbeat" },
+  { value: "Aoede", label: "Aoede - Breezy" },
+  { value: "Charon", label: "Charon - Informative" },
+  { value: "Zephyr", label: "Zephyr - Bright" },
+  { value: "Fenrir", label: "Fenrir - Excitable" },
+  { value: "Leda", label: "Leda - Youthful" },
+  { value: "Orus", label: "Orus - Firm" },
+  { value: "Callirrhoe", label: "Callirrhoe - Easy-going" },
+  { value: "Autonoe", label: "Autonoe - Bright" },
+  { value: "Enceladus", label: "Enceladus - Breathy (Male)" },
+  { value: "Iapetus", label: "Iapetus - Clear" },
+  { value: "Umbriel", label: "Umbriel - Easy-going" },
+  { value: "Algieba", label: "Algieba - Smooth" },
+  { value: "Despina", label: "Despina - Smooth" },
+  { value: "Erinome", label: "Erinome - Clear" },
+  { value: "Algenib", label: "Algenib - Gravelly" },
+  { value: "Rasalgethi", label: "Rasalgethi - Informative" },
+  { value: "Laomedeia", label: "Laomedeia - Upbeat" },
+  { value: "Achernar", label: "Achernar - Soft" },
+  { value: "Alnilam", label: "Alnilam - Firm" },
+  { value: "Schedar", label: "Schedar - Even" },
+  { value: "Gacrux", label: "Gacrux - Mature" },
+  { value: "Pulcherrima", label: "Pulcherrima - Forward" },
+  { value: "Achird", label: "Achird - Friendly" },
+  { value: "Zubenelgenubi", label: "Zubenelgenubi - Casual" },
+  { value: "Vindemiatrix", label: "Vindemiatrix - Gentle" },
+  { value: "Sadachbia", label: "Sadachbia - Lively" },
+  { value: "Sadaltager", label: "Sadaltager - Knowledgeable" },
+  { value: "Sulafat", label: "Sulafat - Warm" }
+];
+
+const PROVIDERS = {
+  gemini: {
+    label: "Gemini API",
+    storageKey: "geminiApiKey",
+    credentialLabel: "Gemini API key",
+    credentialPlaceholder: "AI Studio API key",
+    defaultVoice: "Enceladus",
+    defaultLanguage: "auto",
+    defaultSegmentChars: 500,
+    maxSegmentChars: 12000,
+    lowLatencyLabel: "",
+    voices: GEMINI_VOICES,
+    languages: [
+      { value: "auto", label: "Auto" }
+    ]
+  },
+  xai: {
+    label: "xAI",
+    storageKey: "xaiApiKey",
+    credentialLabel: "xAI API key",
+    credentialPlaceholder: "xai-...",
+    defaultVoice: "eve",
+    defaultLanguage: "auto",
+    defaultSegmentChars: 4500,
+    maxSegmentChars: 12000,
+    costPerMillionChars: 15,
+    lowLatencyLabel: "Optimize first audio chunk",
+    voices: [
+      { value: "eve", label: "Eve" },
+      { value: "ara", label: "Ara" },
+      { value: "leo", label: "Leo" },
+      { value: "rex", label: "Rex" },
+      { value: "sal", label: "Sal" }
+    ],
+    languages: [
+      { value: "auto", label: "Auto" },
+      { value: "en", label: "English" },
+      { value: "de", label: "German" },
+      { value: "fr", label: "French" },
+      { value: "it", label: "Italian" },
+      { value: "es-ES", label: "Spanish (Spain)" },
+      { value: "es-MX", label: "Spanish (Mexico)" },
+      { value: "pt-BR", label: "Portuguese (Brazil)" },
+      { value: "pt-PT", label: "Portuguese (Portugal)" },
+      { value: "zh", label: "Chinese" },
+      { value: "ja", label: "Japanese" },
+      { value: "ko", label: "Korean" },
+      { value: "hi", label: "Hindi" },
+      { value: "id", label: "Indonesian" },
+      { value: "tr", label: "Turkish" },
+      { value: "vi", label: "Vietnamese" },
+      { value: "ru", label: "Russian" },
+      { value: "bn", label: "Bengali" },
+      { value: "ar-EG", label: "Arabic (Egypt)" },
+      { value: "ar-SA", label: "Arabic (Saudi Arabia)" },
+      { value: "ar-AE", label: "Arabic (UAE)" }
+    ]
+  },
+  google: {
+    label: "Google Cloud TTS",
+    storageKey: "googleTtsCredential",
+    credentialLabel: "",
+    credentialPlaceholder: "",
+    defaultVoice: "Enceladus",
+    defaultLanguage: "en-US",
+    defaultSegmentChars: 500,
+    maxSegmentChars: 4500,
+    lowLatencyLabel: "",
+    voices: GEMINI_VOICES,
+    languages: [
+      { value: "en-US", label: "English (US)" },
+      { value: "en-GB", label: "English (UK)" },
+      { value: "de-DE", label: "German (Germany)" },
+      { value: "fr-FR", label: "French (France)" },
+      { value: "it-IT", label: "Italian (Italy)" },
+      { value: "es-ES", label: "Spanish (Spain)" },
+      { value: "pt-BR", label: "Portuguese (Brazil)" },
+      { value: "ja-JP", label: "Japanese" },
+      { value: "ko-KR", label: "Korean" }
+    ]
+  }
+};
+
+const SAMPLE_TEXT = `Chapter One
+
+The morning train crossed the valley just as the clouds began to lift from the river. Mara watched the light spill across the windows and tried to remember the sentence she had written before sleep took her. It had been a good sentence, she was sure of that, the sort that opened a door in the mind and made the next page feel inevitable.
+
+She found the notebook in her coat pocket. Between two pages was a ticket, folded once, with a station name she did not recognize. When the conductor passed, he paused beside her seat and smiled as if they had spoken many times before.
+
+"You will want the north platform when we arrive," he said.
+
+Mara looked down at the ticket again. The ink was fresh. Under the station name, in a careful hand, someone had written: Bring the whole story.`;
+
+const state = {
+  provider: "gemini",
+  credentialsByProvider: {
+    gemini: "",
+    xai: "",
+    google: ""
+  },
+  segmentCharsByProvider: {
+    gemini: PROVIDERS.gemini.defaultSegmentChars,
+    xai: PROVIDERS.xai.defaultSegmentChars,
+    google: PROVIDERS.google.defaultSegmentChars
+  },
+  googleOAuth: {
+    configured: false,
+    connected: false,
+    redirectUri: "",
+    updatedAt: null
+  },
+  ws: null,
+  mediaSource: null,
+  sourceBuffer: null,
+  appendQueue: [],
+  playbackQueue: [],
+  objectUrl: "",
+  currentPlaybackUrl: "",
+  audioChunks: [],
+  segmentAudioChunks: [],
+  activeSegmentIndex: -1,
+  stitchedAudio: null,
+  queuedPcmBytes: 0,
+  currentPcmBytes: 0,
+  queuePlaying: false,
+  audioBytes: 0,
+  audioEncoding: "mpeg",
+  sampleRate: 24000,
+  channels: 1,
+  totalChars: 0,
+  totalSegments: 0,
+  currentSegment: 0,
+  drawingLevel: 0,
+  telemetryTimer: null,
+  started: false
+};
+
+init();
+
+function init() {
+  state.credentialsByProvider.gemini = sessionStorage.getItem(PROVIDERS.gemini.storageKey) || "";
+  state.credentialsByProvider.xai = sessionStorage.getItem(PROVIDERS.xai.storageKey) || "";
+  sessionStorage.removeItem(PROVIDERS.google.storageKey);
+  state.provider = sanitizeProvider(sessionStorage.getItem("ttsProvider"));
+  elements.provider.value = state.provider;
+  elements.apiKey.value = state.provider === "google" ? "" : state.credentialsByProvider[state.provider] || "";
+  elements.rememberKey.checked = state.provider !== "google" && Boolean(sessionStorage.getItem(PROVIDERS[state.provider].storageKey));
+
+  applyProviderConfig();
+  updateTextStats();
+  updateSpeedLabel();
+  drawWaveform();
+
+  elements.provider.addEventListener("change", handleProviderChange);
+  elements.segmentChars.addEventListener("change", handleSegmentSizeChange);
+  elements.bookText.addEventListener("input", updateTextStats);
+  elements.speed.addEventListener("input", updateSpeedLabel);
+  elements.voice.addEventListener("change", handleVoiceChange);
+  elements.startButton.addEventListener("click", startNarration);
+  elements.stopButton.addEventListener("click", stopNarration);
+  elements.downloadButton.addEventListener("click", downloadAudio);
+  elements.sampleButton.addEventListener("click", loadSample);
+  elements.clearTextButton.addEventListener("click", clearText);
+  elements.fileInput.addEventListener("change", loadTextFile);
+  elements.rememberKey.addEventListener("change", persistKeyPreference);
+  elements.apiKey.addEventListener("input", persistKeyPreference);
+  elements.googleConnectButton.addEventListener("click", connectGoogleOAuth);
+  elements.googleDisconnectButton.addEventListener("click", disconnectGoogleOAuth);
+  window.addEventListener("message", handleWindowMessage);
+
+  elements.audio.addEventListener("pause", sendTelemetry);
+  elements.audio.addEventListener("play", sendTelemetry);
+  elements.audio.addEventListener("ended", handleAudioEnded);
+  elements.audio.addEventListener("timeupdate", sendTelemetry);
+  elements.audio.addEventListener("progress", sendTelemetry);
+
+  refreshGoogleOAuthStatus();
+}
+
+function handleProviderChange() {
+  if (state.provider !== "google") {
+    state.credentialsByProvider[state.provider] = elements.apiKey.value.trim();
+  }
+  state.segmentCharsByProvider[state.provider] = Number(elements.segmentChars.value);
+  state.provider = sanitizeProvider(elements.provider.value);
+  sessionStorage.setItem("ttsProvider", state.provider);
+  elements.apiKey.value = state.provider === "google" ? "" : state.credentialsByProvider[state.provider] || "";
+  elements.rememberKey.checked = state.provider !== "google" && Boolean(sessionStorage.getItem(PROVIDERS[state.provider].storageKey));
+  applyProviderConfig();
+  updateTextStats();
+}
+
+function handleSegmentSizeChange() {
+  state.segmentCharsByProvider[state.provider] = Number(elements.segmentChars.value);
+}
+
+function applyProviderConfig() {
+  const config = PROVIDERS[state.provider];
+  const previousVoice = elements.voice.value;
+  const previousLanguage = elements.language.value;
+  const usesBrowserCredential = state.provider !== "google";
+
+  elements.apiKeyLabel.textContent = config.credentialLabel;
+  elements.apiKey.placeholder = config.credentialPlaceholder;
+  elements.apiKeyLabel.classList.toggle("is-hidden", !usesBrowserCredential);
+  elements.apiKey.classList.toggle("is-hidden", !usesBrowserCredential);
+  elements.credentialSessionLine.classList.toggle("is-hidden", !usesBrowserCredential);
+  elements.apiKey.disabled = !usesBrowserCredential;
+  elements.rememberKey.disabled = !usesBrowserCredential;
+  if (!usesBrowserCredential) {
+    elements.apiKey.value = "";
+    elements.rememberKey.checked = false;
+  }
+  elements.lowLatencyLabel.textContent = config.lowLatencyLabel;
+  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google");
+  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google";
+  elements.textNormalizationLine.classList.toggle("is-hidden", state.provider !== "xai");
+  elements.textNormalization.disabled = state.provider !== "xai";
+  elements.googleAuthPanel.classList.toggle("is-hidden", state.provider !== "google");
+  updateDownloadButton();
+
+  populateSelect(elements.voice, config.voices, previousVoice, config.defaultVoice);
+  populateSelect(elements.language, config.languages, previousLanguage, config.defaultLanguage);
+
+  if (state.provider === "google") {
+    syncGoogleLanguageToVoice();
+  }
+
+  syncSegmentSizeControl(config);
+
+  updateGoogleOAuthPanel();
+}
+
+function syncSegmentSizeControl(config) {
+  for (const option of elements.segmentChars.options) {
+    option.disabled = Number(option.value) > config.maxSegmentChars;
+  }
+
+  const preferredValue = String(state.segmentCharsByProvider[state.provider] || config.defaultSegmentChars);
+  const preferredOption = Array.from(elements.segmentChars.options)
+    .find((option) => option.value === preferredValue && !option.disabled);
+
+  elements.segmentChars.value = preferredOption ? preferredValue : String(config.defaultSegmentChars);
+  state.segmentCharsByProvider[state.provider] = Number(elements.segmentChars.value);
+}
+
+function sanitizeProvider(value) {
+  if (value === "xai" || value === "google" || value === "gemini") return value;
+  return "gemini";
+}
+
+function usesPcmPlayback(provider) {
+  return provider === "gemini" || provider === "google";
+}
+
+function populateSelect(select, options, preferredValue, fallbackValue) {
+  select.replaceChildren(...options.map((optionConfig) => {
+    const option = document.createElement("option");
+    option.value = optionConfig.value;
+    option.textContent = optionConfig.label;
+    if (optionConfig.language) option.dataset.language = optionConfig.language;
+    return option;
+  }));
+
+  const hasPreferred = options.some((option) => option.value === preferredValue);
+  const hasFallback = options.some((option) => option.value === fallbackValue);
+  select.value = hasPreferred ? preferredValue : hasFallback ? fallbackValue : options[0].value;
+}
+
+function handleVoiceChange() {
+  if (state.provider === "google") {
+    syncGoogleLanguageToVoice();
+  }
+}
+
+function syncGoogleLanguageToVoice() {
+  const selected = elements.voice.selectedOptions[0];
+  if (selected?.dataset.language) {
+    elements.language.value = selected.dataset.language;
+  }
+}
+
+async function refreshGoogleOAuthStatus() {
+  try {
+    const response = await fetch("/api/google-oauth/status", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+
+    state.googleOAuth = await response.json();
+  } catch {
+    state.googleOAuth = {
+      configured: false,
+      connected: false,
+      redirectUri: "",
+      updatedAt: null
+    };
+  }
+
+  updateGoogleOAuthPanel();
+}
+
+function updateGoogleOAuthPanel() {
+  const auth = state.googleOAuth;
+  elements.googleConnectButton.disabled = !auth.configured;
+  elements.googleDisconnectButton.disabled = !auth.connected;
+
+  if (!auth.configured) {
+    elements.googleAuthState.textContent = "Google OAuth needs .env setup";
+    elements.googleAuthHint.textContent = auth.redirectUri
+      ? `Authorized redirect URI: ${auth.redirectUri}`
+      : "Add Google OAuth client settings, then restart the app.";
+    return;
+  }
+
+  if (auth.connected) {
+    elements.googleAuthState.textContent = "Google OAuth connected";
+    elements.googleAuthHint.textContent = auth.updatedAt
+      ? `Token saved locally ${formatRelativeDate(auth.updatedAt)}.`
+      : "Token saved locally.";
+    return;
+  }
+
+  elements.googleAuthState.textContent = "Google OAuth ready";
+  elements.googleAuthHint.textContent = `Authorized redirect URI: ${auth.redirectUri}`;
+}
+
+function connectGoogleOAuth() {
+  const popup = window.open("/auth/google/start", "googleOAuth", "width=560,height=720");
+  setStatus("Waiting for Google sign-in...");
+
+  if (!popup) {
+    window.location.assign("/auth/google/start");
+    return;
+  }
+
+  const poll = window.setInterval(async () => {
+    if (!popup.closed) return;
+    window.clearInterval(poll);
+    await refreshGoogleOAuthStatus();
+    setStatus(state.googleOAuth.connected ? "Google OAuth connected." : "Google sign-in was not completed.");
+  }, 1000);
+}
+
+async function disconnectGoogleOAuth() {
+  elements.googleDisconnectButton.disabled = true;
+  try {
+    const response = await fetch("/api/google-oauth/disconnect", { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    await refreshGoogleOAuthStatus();
+    setStatus("Google OAuth disconnected.");
+  } catch (error) {
+    setStatus(`Google disconnect failed: ${error.message}`);
+    await refreshGoogleOAuthStatus();
+  }
+}
+
+function handleWindowMessage(event) {
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "google-oauth-complete") return;
+
+  refreshGoogleOAuthStatus().then(() => {
+    setStatus(state.googleOAuth.connected ? "Google OAuth connected." : "Google sign-in finished, but no token was saved.");
+  });
+}
+
+function formatRelativeDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+
+  const seconds = Math.max(1, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return date.toLocaleDateString();
+}
+
+async function startNarration() {
+  const apiKey = state.provider === "google" ? "" : elements.apiKey.value.trim();
+  const text = elements.bookText.value.trim();
+
+  if (state.provider === "google") {
+    await refreshGoogleOAuthStatus();
+  }
+
+  const canUseStoredGoogleOAuth = state.provider === "google" && state.googleOAuth.connected;
+  if (!apiKey && !canUseStoredGoogleOAuth) {
+    setStatus(state.provider === "google"
+      ? "Connect Google before starting narration."
+      : `Add your ${PROVIDERS[state.provider].credentialLabel}.`);
+    if (state.provider === "google") {
+      elements.googleConnectButton.focus();
+    } else {
+      elements.apiKey.focus();
+    }
+    return;
+  }
+
+  if (!text) {
+    setStatus("Paste text or load a .txt file.");
+    elements.bookText.focus();
+    return;
+  }
+
+  persistKeyPreference();
+  resetAudioPipeline();
+
+  const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/stream`;
+  const ws = new WebSocket(wsUrl);
+  ws.binaryType = "arraybuffer";
+  state.ws = ws;
+  state.started = true;
+
+  setBusy(true);
+  setStatus("Opening local narration stream...");
+
+  ws.addEventListener("open", () => {
+    ws.send(JSON.stringify({
+      type: "start",
+      apiKey,
+      text,
+      options: readOptions()
+    }));
+    startTelemetry();
+  });
+
+  ws.addEventListener("message", (event) => {
+    if (typeof event.data === "string") {
+      handleServerEvent(JSON.parse(event.data));
+      return;
+    }
+
+    handleAudioChunk(event.data);
+  });
+
+  ws.addEventListener("close", () => {
+    stopTelemetry();
+    setBusy(false);
+  });
+
+  ws.addEventListener("error", () => {
+    setStatus("Local stream error.");
+    setBusy(false);
+  });
+}
+
+function stopNarration() {
+  if (state.ws?.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ type: "cancel" }));
+  }
+
+  state.ws?.close();
+  state.ws = null;
+  stopTelemetry();
+  setBusy(false);
+  setStatus("Stopped.");
+}
+
+function handleServerEvent(event) {
+  if (event.type === "meta") {
+    state.audioEncoding = event.audioEncoding || "mpeg";
+    state.sampleRate = event.sampleRate || 24000;
+    state.channels = event.channels || 1;
+    state.totalChars = event.totalChars;
+    state.totalSegments = event.totalSegments;
+    state.currentSegment = 0;
+    elements.progressBar.value = 0;
+    elements.segmentText.textContent = `0 / ${state.totalSegments} segments`;
+    updateDownloadButton();
+    setStatus(`Prepared ${state.totalSegments} streaming segments.`);
+    return;
+  }
+
+  if (event.type === "status") {
+    setStatus(event.message);
+    return;
+  }
+
+  if (event.type === "segment") {
+    state.currentSegment = event.index;
+    beginSegmentAudio(event.index);
+    elements.segmentText.textContent = `${event.index} / ${event.totalSegments} segments`;
+    elements.progressBar.value = ((event.index - 1) / event.totalSegments) * 100;
+    setStatus(`Generating segment ${event.index}...`);
+    return;
+  }
+
+  if (event.type === "segmentDone") {
+    elements.segmentText.textContent = `${event.index} / ${event.totalSegments} segments`;
+    elements.progressBar.value = (event.index / event.totalSegments) * 100;
+    finishSegmentAudio(event.index);
+    setStatus(`Buffered segment ${event.index}.`);
+    sendTelemetry();
+    return;
+  }
+
+  if (event.type === "bytes") {
+    state.audioBytes = event.totalBytes;
+    return;
+  }
+
+  if (event.type === "waiting") {
+    setStatus(event.message);
+    return;
+  }
+
+  if (event.type === "complete") {
+    elements.progressBar.value = 100;
+    endMediaStream();
+    prepareStitchedDownload();
+    setBusy(false);
+    return;
+  }
+
+  if (event.type === "cancelled") {
+    setStatus(event.message || "Cancelled.");
+    endMediaStream();
+    setBusy(false);
+    return;
+  }
+
+  if (event.type === "error") {
+    setStatus(event.message || "Narration failed.");
+    endMediaStream();
+    setBusy(false);
+  }
+}
+
+function handleAudioChunk(arrayBuffer) {
+  const chunk = arrayBuffer.slice(0);
+  state.audioChunks.push(chunk);
+  addChunkToActiveSegment(chunk);
+  state.audioBytes += chunk.byteLength;
+  state.drawingLevel = Math.min(1, state.drawingLevel + 0.25);
+
+  if (state.audioEncoding === "pcm_s16le") {
+    queuePcmForPlayback(chunk);
+    return;
+  }
+
+  appendAudio(chunk);
+
+  if (elements.audio.paused && state.started) {
+    elements.audio.play().catch(() => {
+      setStatus("Audio is buffering. Press play if your browser blocks autoplay.");
+    });
+  }
+}
+
+function resetAudioPipeline() {
+  revokeAudioUrls();
+  state.audioChunks = [];
+  state.segmentAudioChunks = [];
+  state.activeSegmentIndex = -1;
+  state.stitchedAudio = null;
+  state.audioBytes = 0;
+  state.appendQueue = [];
+  state.playbackQueue = [];
+  state.queuedPcmBytes = 0;
+  state.currentPcmBytes = 0;
+  state.queuePlaying = false;
+  state.audioEncoding = usesPcmPlayback(state.provider) ? "pcm_s16le" : "mpeg";
+  state.sampleRate = 24000;
+  state.channels = 1;
+  state.sourceBuffer = null;
+  state.currentSegment = 0;
+  state.totalSegments = 0;
+  updateDownloadButton();
+  elements.progressBar.value = 0;
+  elements.segmentText.textContent = "0 / 0 segments";
+
+  if (state.audioEncoding === "pcm_s16le") {
+    state.mediaSource = null;
+    elements.audio.removeAttribute("src");
+    elements.audio.load();
+    return;
+  }
+
+  state.mediaSource = new MediaSource();
+  state.objectUrl = URL.createObjectURL(state.mediaSource);
+  elements.audio.src = state.objectUrl;
+
+  state.mediaSource.addEventListener("sourceopen", () => {
+    if (state.sourceBuffer) return;
+
+    state.sourceBuffer = state.mediaSource.addSourceBuffer("audio/mpeg");
+    state.sourceBuffer.mode = "sequence";
+    state.sourceBuffer.addEventListener("updateend", drainAppendQueue);
+    drainAppendQueue();
+  }, { once: true });
+}
+
+function revokeAudioUrls() {
+  if (state.objectUrl) {
+    URL.revokeObjectURL(state.objectUrl);
+    state.objectUrl = "";
+  }
+
+  if (state.currentPlaybackUrl) {
+    URL.revokeObjectURL(state.currentPlaybackUrl);
+    state.currentPlaybackUrl = "";
+  }
+
+  for (const item of state.playbackQueue) {
+    URL.revokeObjectURL(item.url);
+  }
+}
+
+function queuePcmForPlayback(chunk) {
+  const blob = createWavBlob([chunk], {
+    sampleRate: state.sampleRate,
+    channels: state.channels
+  });
+  const url = URL.createObjectURL(blob);
+  state.playbackQueue.push({ url, bytes: chunk.byteLength });
+  state.queuedPcmBytes += chunk.byteLength;
+
+  if (!state.queuePlaying && state.started) {
+    playNextQueuedAudio();
+  }
+}
+
+function handleAudioEnded() {
+  if (state.audioEncoding === "pcm_s16le") {
+    playNextQueuedAudio();
+  }
+}
+
+function playNextQueuedAudio() {
+  if (state.audioEncoding !== "pcm_s16le") return;
+
+  if (state.currentPlaybackUrl) {
+    URL.revokeObjectURL(state.currentPlaybackUrl);
+    state.currentPlaybackUrl = "";
+  }
+
+  const next = state.playbackQueue.shift();
+  if (!next) {
+    state.queuePlaying = false;
+    state.currentPcmBytes = 0;
+    return;
+  }
+
+  state.queuePlaying = true;
+  state.currentPlaybackUrl = next.url;
+  state.currentPcmBytes = next.bytes;
+  state.queuedPcmBytes = Math.max(0, state.queuedPcmBytes - next.bytes);
+  elements.audio.src = next.url;
+  elements.audio.play().catch(() => {
+    setStatus("Audio is ready. Press play if your browser blocks autoplay.");
+  });
+}
+
+function appendAudio(chunk) {
+  state.appendQueue.push(chunk);
+  drainAppendQueue();
+}
+
+function drainAppendQueue() {
+  const sourceBuffer = state.sourceBuffer;
+  if (!sourceBuffer || sourceBuffer.updating || state.appendQueue.length === 0) return;
+  if (state.mediaSource?.readyState !== "open") return;
+
+  try {
+    sourceBuffer.appendBuffer(state.appendQueue.shift());
+  } catch (error) {
+    setStatus(`Playback buffer error: ${error.message}`);
+  }
+}
+
+function endMediaStream() {
+  if (state.audioEncoding === "pcm_s16le") return;
+
+  const tryEnd = () => {
+    if (!state.mediaSource || state.mediaSource.readyState !== "open") return;
+    if (state.sourceBuffer?.updating || state.appendQueue.length > 0) {
+      window.setTimeout(tryEnd, 120);
+      return;
+    }
+
+    try {
+      state.mediaSource.endOfStream();
+    } catch {
+      // Browsers can throw if the stream already ended.
+    }
+  };
+
+  tryEnd();
+}
+
+function readOptions() {
+  return {
+    provider: state.provider,
+    voice: elements.voice.value,
+    language: elements.language.value,
+    speed: Number(elements.speed.value),
+    segmentChars: Number(elements.segmentChars.value),
+    optimizeStreamingLatency: elements.lowLatency.checked,
+    textNormalization: elements.textNormalization.checked
+  };
+}
+
+function sendTelemetry() {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+
+  state.ws.send(JSON.stringify({
+    type: "telemetry",
+    paused: elements.audio.paused,
+    bufferedAheadSeconds: getBufferedAheadSeconds()
+  }));
+
+  updateBufferReadout();
+}
+
+function startTelemetry() {
+  stopTelemetry();
+  state.telemetryTimer = window.setInterval(sendTelemetry, 1000);
+}
+
+function stopTelemetry() {
+  if (state.telemetryTimer) {
+    window.clearInterval(state.telemetryTimer);
+    state.telemetryTimer = null;
+  }
+}
+
+function getBufferedAheadSeconds() {
+  if (state.audioEncoding === "pcm_s16le") {
+    const currentRemaining = Number.isFinite(elements.audio.duration)
+      ? Math.max(0, elements.audio.duration - (elements.audio.currentTime || 0))
+      : pcmBytesToSeconds(state.currentPcmBytes, state.sampleRate, state.channels);
+    return currentRemaining + pcmBytesToSeconds(state.queuedPcmBytes, state.sampleRate, state.channels);
+  }
+
+  const audio = elements.audio;
+  if (!audio.buffered.length) return 0;
+
+  const current = audio.currentTime || 0;
+  for (let index = 0; index < audio.buffered.length; index += 1) {
+    const start = audio.buffered.start(index);
+    const end = audio.buffered.end(index);
+    if (current >= start && current <= end) {
+      return Math.max(0, end - current);
+    }
+  }
+
+  return Math.max(0, audio.buffered.end(audio.buffered.length - 1) - current);
+}
+
+function updateBufferReadout() {
+  elements.bufferReadout.textContent = `${Math.round(getBufferedAheadSeconds())}s`;
+}
+
+function beginSegmentAudio(index) {
+  const segmentIndex = Math.max(0, Number(index) - 1);
+  state.activeSegmentIndex = segmentIndex;
+  if (!state.segmentAudioChunks[segmentIndex]) {
+    state.segmentAudioChunks[segmentIndex] = [];
+  }
+}
+
+function addChunkToActiveSegment(chunk) {
+  if (state.activeSegmentIndex < 0) {
+    beginSegmentAudio(state.segmentAudioChunks.length + 1);
+  }
+
+  state.segmentAudioChunks[state.activeSegmentIndex].push(chunk);
+}
+
+function finishSegmentAudio(index) {
+  const segmentIndex = Math.max(0, Number(index) - 1);
+  if (state.activeSegmentIndex === segmentIndex) {
+    state.activeSegmentIndex = -1;
+  }
+}
+
+function prepareStitchedDownload() {
+  const segments = getGeneratedAudioSegments();
+  if (!segments.length) {
+    state.stitchedAudio = null;
+    updateDownloadButton();
+    setStatus("Narration fully generated, but no audio was received.");
+    return;
+  }
+
+  elements.downloadButton.disabled = true;
+  setStatus(`Stitching ${segments.length.toLocaleString()} segment${segments.length === 1 ? "" : "s"}...`);
+
+  const isPcm = state.audioEncoding === "pcm_s16le";
+  const blob = isPcm
+    ? createWavBlob(segments.flat(), { sampleRate: state.sampleRate, channels: state.channels })
+    : createMpegBlob(segments);
+
+  state.stitchedAudio = {
+    blob,
+    extension: isPcm ? "wav" : "mp3"
+  };
+
+  updateDownloadButton();
+  setStatus(`Narration fully generated. Continuous ${state.stitchedAudio.extension.toUpperCase()} ready.`);
+}
+
+function getGeneratedAudioSegments() {
+  const segments = state.segmentAudioChunks
+    .filter((segment) => Array.isArray(segment) && segment.length > 0);
+
+  if (segments.length) return segments;
+  return state.audioChunks.length ? [state.audioChunks] : [];
+}
+
+function downloadAudio() {
+  if (!state.stitchedAudio) return;
+
+  const url = URL.createObjectURL(state.stitchedAudio.blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${state.provider}-audiobook.${state.stitchedAudio.extension}`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+function updateDownloadButton() {
+  const extension = usesPcmPlayback(state.provider) || state.audioEncoding === "pcm_s16le" ? "WAV" : "MP3";
+  elements.downloadButton.textContent = `Download continuous ${extension}`;
+  elements.downloadButton.disabled = !state.stitchedAudio;
+}
+
+function createMpegBlob(segments) {
+  const normalizedSegments = segments.map((chunks, index) => {
+    const segment = chunks.length === 1 ? chunks[0] : concatArrayBuffers(chunks);
+    let start = index === 0 ? 0 : getLeadingId3v2Size(segment);
+    let end = segment.byteLength;
+
+    if (index < segments.length - 1) {
+      end -= getTrailingId3v1Size(segment);
+    }
+
+    if (start >= end) {
+      start = 0;
+      end = segment.byteLength;
+    }
+
+    return start === 0 && end === segment.byteLength
+      ? segment
+      : segment.slice(start, end);
+  });
+
+  return new Blob(normalizedSegments, { type: "audio/mpeg" });
+}
+
+function concatArrayBuffers(chunks) {
+  const totalBytes = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+  const combined = new Uint8Array(totalBytes);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    combined.set(new Uint8Array(chunk), offset);
+    offset += chunk.byteLength;
+  }
+
+  return combined.buffer;
+}
+
+function getLeadingId3v2Size(buffer) {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 10) return 0;
+  if (bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) return 0;
+
+  const tagSize = (
+    ((bytes[6] & 0x7f) << 21) |
+    ((bytes[7] & 0x7f) << 14) |
+    ((bytes[8] & 0x7f) << 7) |
+    (bytes[9] & 0x7f)
+  );
+  const footerSize = bytes[5] & 0x10 ? 10 : 0;
+  return Math.min(buffer.byteLength, 10 + tagSize + footerSize);
+}
+
+function getTrailingId3v1Size(buffer) {
+  if (buffer.byteLength < 128) return 0;
+
+  const marker = new Uint8Array(buffer, buffer.byteLength - 128, 3);
+  return marker[0] === 0x54 && marker[1] === 0x41 && marker[2] === 0x47 ? 128 : 0;
+}
+
+function createWavBlob(chunks, { sampleRate, channels }) {
+  const dataBytes = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const bytesPerSample = 2;
+  const byteRate = sampleRate * channels * bytesPerSample;
+  const blockAlign = channels * bytesPerSample;
+
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bytesPerSample * 8, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, dataBytes, true);
+
+  return new Blob([header, ...chunks], { type: "audio/wav" });
+}
+
+function writeAscii(view, offset, value) {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
+}
+
+function pcmBytesToSeconds(bytes, sampleRate, channels) {
+  const bytesPerSecond = sampleRate * channels * 2;
+  return bytesPerSecond > 0 ? bytes / bytesPerSecond : 0;
+}
+
+async function loadTextFile() {
+  const [file] = elements.fileInput.files;
+  if (!file) return;
+
+  elements.bookText.value = await file.text();
+  updateTextStats();
+  setStatus(`Loaded ${file.name}.`);
+  elements.fileInput.value = "";
+}
+
+function loadSample() {
+  elements.bookText.value = SAMPLE_TEXT;
+  updateTextStats();
+  setStatus("Sample loaded.");
+}
+
+function clearText() {
+  elements.bookText.value = "";
+  updateTextStats();
+  elements.bookText.focus();
+}
+
+function persistKeyPreference() {
+  if (state.provider === "google") {
+    sessionStorage.removeItem(PROVIDERS.google.storageKey);
+    state.credentialsByProvider.google = "";
+    return;
+  }
+
+  const config = PROVIDERS[state.provider];
+  state.credentialsByProvider[state.provider] = elements.apiKey.value.trim();
+
+  if (elements.rememberKey.checked) {
+    sessionStorage.setItem(config.storageKey, state.credentialsByProvider[state.provider]);
+  } else {
+    sessionStorage.removeItem(config.storageKey);
+  }
+}
+
+function updateTextStats() {
+  const count = elements.bookText.value.trim().length;
+  const costPerMillion = PROVIDERS[state.provider].costPerMillionChars;
+  elements.charCount.textContent = `${count.toLocaleString()} chars`;
+  if (costPerMillion) {
+    const estimatedCost = (count / 1_000_000) * costPerMillion;
+    elements.costEstimate.textContent = `$${estimatedCost.toFixed(3)} estimated`;
+  } else if (state.provider === "gemini") {
+    elements.costEstimate.textContent = "Gemini pricing varies by model";
+  } else if (state.provider === "google") {
+    elements.costEstimate.textContent = "Cloud Gemini-TTS pricing varies by model";
+  } else {
+    elements.costEstimate.textContent = "Cloud TTS pricing varies by voice";
+  }
+}
+
+function updateSpeedLabel() {
+  elements.speedValue.textContent = `${Number(elements.speed.value).toFixed(2)}x`;
+}
+
+function setBusy(isBusy) {
+  elements.startButton.disabled = isBusy;
+  elements.stopButton.disabled = !isBusy;
+}
+
+function setStatus(message) {
+  elements.statusText.textContent = message;
+}
+
+function drawWaveform() {
+  const canvas = elements.waveCanvas;
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const now = performance.now() / 1000;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.fillRect(0, 0, width, height);
+
+  const lines = 54;
+  const center = height * 0.48;
+  const baseAmplitude = 24 + state.drawingLevel * 96;
+
+  for (let index = 0; index < lines; index += 1) {
+    const x = (index / (lines - 1)) * width;
+    const wave = Math.sin(index * 0.58 + now * 2.8) * Math.cos(index * 0.21 + now);
+    const amplitude = 22 + Math.abs(wave) * baseAmplitude;
+
+    ctx.beginPath();
+    ctx.moveTo(x, center - amplitude);
+    ctx.lineTo(x, center + amplitude);
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = index % 3 === 0
+      ? "rgba(255, 218, 143, 0.9)"
+      : index % 3 === 1
+        ? "rgba(175, 224, 214, 0.86)"
+        : "rgba(219, 157, 169, 0.78)";
+    ctx.stroke();
+  }
+
+  state.drawingLevel *= 0.92;
+  updateBufferReadout();
+  requestAnimationFrame(drawWaveform);
+}
