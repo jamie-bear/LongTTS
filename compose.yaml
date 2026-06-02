@@ -1,9 +1,9 @@
 services:
-  groktts:
+  longtts:
     build:
       context: .
-    image: groktts-audiobook:local
-    container_name: groktts-audiobook
+    image: longtts:local
+    container_name: longtts
     environment:
       NODE_ENV: production
       PORT: "10203"

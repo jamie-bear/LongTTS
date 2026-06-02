@@ -180,7 +180,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`TTS Audiobook Studio is running at http://localhost:${PORT}`);
+  console.log(`LongTTS is running at http://localhost:${PORT}`);
 });
 
 async function handleGoogleOAuthStatus(req, res) {
@@ -299,7 +299,7 @@ async function finishGoogleOAuth(req, res, url) {
     await writeGoogleOAuthTokenFile(tokenBody);
     sendGoogleOAuthResult(res, 200, {
       title: "Google is connected",
-      message: "You can close this tab and return to TTS Audiobook Studio.",
+      message: "You can close this tab and return to LongTTS.",
       success: true
     });
   } catch (exchangeError) {

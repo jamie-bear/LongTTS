@@ -1,4 +1,4 @@
-# TTS Audiobook Studio
+# LongTTS
 
 A local audiobook web app for turning long-form text into narration through Gemini TTS, xAI streaming TTS, or Google Cloud Text-to-Speech voices.
 
