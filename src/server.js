@@ -15,6 +15,8 @@ loadDotEnv(path.join(rootDir, ".env"));
 
 const PORT = Number(process.env.PORT || 10203);
 const XAI_TTS_URL = "wss://api.x.ai/v1/tts";
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=speech";
+const OPENROUTER_TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
 const GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize";
 const GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -92,6 +94,11 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === "/api/health") {
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/api/openrouter/models") {
+      await handleOpenRouterModels(req, res);
       return;
     }
 
@@ -182,6 +189,73 @@ server.on("upgrade", (req, socket, head) => {
 server.listen(PORT, () => {
   console.log(`LongTTS is running at http://localhost:${PORT}`);
 });
+
+async function handleOpenRouterModels(req, res) {
+  if (req.method !== "POST") {
+    res.writeHead(405, {
+      "Content-Type": "application/json; charset=utf-8",
+      Allow: "POST"
+    });
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonRequest(req, 16_384);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message });
+    return;
+  }
+
+  const apiKey = String(body.apiKey || "").trim();
+  if (!apiKey) {
+    sendJson(res, 400, { error: "OpenRouter API key is required." });
+    return;
+  }
+
+  try {
+    const response = await fetch(OPENROUTER_MODELS_URL, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": getRequestOrigin(req),
+        "X-Title": "LongTTS"
+      }
+    });
+    const parsed = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(parsed?.error?.message || parsed?.message || `${response.status} ${response.statusText}`);
+    }
+
+    const models = (parsed?.data || [])
+      .map((model) => ({
+        id: String(model.id || ""),
+        name: String(model.name || model.id || ""),
+        voices: inferOpenRouterVoices(model)
+      }))
+      .filter((model) => model.id);
+
+    sendJson(res, 200, { models });
+  } catch (error) {
+    sendJson(res, 502, { error: `OpenRouter model discovery failed: ${error.message}` });
+  }
+}
+
+async function readJsonRequest(req, limitBytes) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > limitBytes) throw new Error("Request body is too large.");
+    chunks.push(chunk);
+  }
+  if (!chunks.length) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new Error("Request body must be valid JSON.");
+  }
+}
 
 async function handleGoogleOAuthStatus(req, res) {
   const storedToken = await readGoogleOAuthTokenFile();
@@ -577,6 +651,8 @@ function createNarrationSession(client) {
 
     if (options.provider === "google") {
       sendJsonWs(client, { type: "status", message: `Using Google Cloud Gemini-TTS (${GEMINI_TTS_MODEL}).` });
+    } else if (options.provider === "openrouter") {
+      sendJsonWs(client, { type: "status", message: `Using OpenRouter ${options.model}.` });
     } else if (options.provider === "gemini") {
       sendJsonWs(client, { type: "status", message: "Using Gemini Developer API TTS." });
     } else {
@@ -641,6 +717,11 @@ function createNarrationSession(client) {
       return;
     }
 
+    if (state.options.provider === "openrouter") {
+      await synthesizeOpenRouterSegment(segment);
+      return;
+    }
+
     const upstream = state.upstream;
     if (!upstream || upstream.readyState !== WebSocketConnection.OPEN) {
       throw new Error("xAI connection is not open.");
@@ -659,6 +740,41 @@ function createNarrationSession(client) {
 
     try {
       const chunk = await synthesizeGoogleSpeech(segment, state.options, state.apiKey, controller.signal);
+      if (state.cancelled) return;
+
+      state.currentSegmentBytes = chunk.length;
+      state.totalBytes += chunk.length;
+
+      if (client.readyState === WebSocketConnection.OPEN) {
+        client.send(chunk, { binary: true });
+      }
+
+      state.waitingForAudioDone = false;
+      reportBytes(true);
+
+      sendJsonWs(client, {
+        type: "segmentDone",
+        index: state.segmentIndex + 1,
+        totalSegments: state.segments.length,
+        traceId: null,
+        bytes: state.currentSegmentBytes
+      });
+
+      state.segmentIndex += 1;
+      await pumpNextSegment();
+    } finally {
+      if (state.currentRequest === controller) {
+        state.currentRequest = null;
+      }
+    }
+  }
+
+  async function synthesizeOpenRouterSegment(segment) {
+    const controller = new AbortController();
+    state.currentRequest = controller;
+
+    try {
+      const chunk = await synthesizeOpenRouterSpeech(segment, state.options, state.apiKey, controller.signal);
       if (state.cancelled) return;
 
       state.currentSegmentBytes = chunk.length;
@@ -850,7 +966,9 @@ function sanitizeOptions(raw) {
     ? "Enceladus"
     : provider === "gemini"
       ? "Enceladus"
-      : "eve";
+      : provider === "openrouter"
+        ? "alloy"
+        : "eve";
   const voice = sanitizeVoice(raw.voice, defaultVoice, provider);
   const language = sanitizeLanguage(raw.language, provider, voice);
   const speed = clamp(Number(raw.speed || 1), 0.7, 1.5);
@@ -859,9 +977,14 @@ function sanitizeOptions(raw) {
   const segmentChars = Math.round(clamp(Number(raw.segmentChars || defaultSegmentChars), MIN_SEGMENT_CHARS, maxSegmentChars));
   const optimizeStreamingLatency = raw.optimizeStreamingLatency ? 1 : 0;
   const textNormalization = provider === "xai" && Boolean(raw.textNormalization);
+  const model = provider === "openrouter" ? String(raw.model || "").trim() : "";
+  if (provider === "openrouter" && !model) {
+    throw new Error("Select an OpenRouter speech model before starting narration.");
+  }
 
   return {
     provider,
+    model,
     voice,
     language: language || "auto",
     speed,
@@ -881,6 +1004,7 @@ function getDefaultSegmentChars(provider) {
 function sanitizeProvider(rawProvider) {
   if (rawProvider === "google") return "google";
   if (rawProvider === "gemini") return "gemini";
+  if (rawProvider === "openrouter") return "openrouter";
   return "xai";
 }
 
@@ -892,6 +1016,10 @@ function sanitizeVoice(rawVoice, fallback, provider) {
 
   if (provider === "gemini") {
     return GEMINI_TTS_VOICES.has(voice) ? voice : fallback;
+  }
+
+  if (provider === "openrouter") {
+    return voice || fallback;
   }
 
   return (voice || fallback).toLowerCase();
@@ -936,6 +1064,48 @@ function buildXaiUrl(options) {
   });
 
   return `${XAI_TTS_URL}?${params}`;
+}
+
+async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
+  const trimmedApiKey = String(apiKey || "").trim();
+  if (!trimmedApiKey) {
+    throw new Error("Add your OpenRouter API key before starting narration.");
+  }
+
+  const response = await fetch(OPENROUTER_TTS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: `Bearer ${trimmedApiKey}`,
+      "X-Title": "LongTTS"
+    },
+    body: JSON.stringify({
+      model: options.model,
+      input: text,
+      voice: options.voice,
+      response_format: "mp3",
+      speed: options.speed
+    }),
+    signal
+  });
+
+  if (!response.ok) {
+    const message = await readErrorResponse(response);
+    throw new Error(`OpenRouter TTS request failed: ${message}`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function readErrorResponse(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) return `${response.status} ${response.statusText}`;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed?.error?.message || parsed?.message || text.slice(0, 240);
+  } catch {
+    return text.slice(0, 240);
+  }
 }
 
 async function synthesizeGoogleSpeech(text, options, credential, signal) {
@@ -1230,7 +1400,68 @@ function deriveGoogleLanguageCode(voice) {
 function providerLabel(provider) {
   if (provider === "google") return "Google Cloud TTS";
   if (provider === "gemini") return "Gemini API";
+  if (provider === "openrouter") return "OpenRouter";
   return "xAI";
+}
+
+function supportsSpeechOutput(model) {
+  const modalities = [
+    ...(model?.architecture?.output_modalities || []),
+    ...(model?.output_modalities || []),
+    ...(model?.modalities?.output || [])
+  ].map((value) => String(value).toLowerCase());
+  return modalities.includes("speech") || modalities.includes("audio") || /tts|speech|voice/i.test(`${model?.id || ""} ${model?.name || ""}`);
+}
+
+function inferOpenRouterVoices(model) {
+  const discovered = extractVoiceValues(model);
+  const fallback = getOpenRouterFallbackVoices(model?.id || model?.name || "");
+  const values = discovered.length ? discovered : fallback;
+  return values.map((voice) => ({ value: voice, label: formatVoiceLabel(voice) }));
+}
+
+function extractVoiceValues(value, seen = new Set()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return [];
+  seen.add(value);
+
+  const voices = [];
+  for (const [key, child] of Object.entries(value)) {
+    if (/voices?$/i.test(key)) {
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (typeof item === "string") voices.push(item);
+          else if (item && typeof item === "object") voices.push(String(item.id || item.name || item.voice || ""));
+        }
+      } else if (child && typeof child === "object") {
+        voices.push(...Object.keys(child));
+      }
+    }
+    if (child && typeof child === "object") voices.push(...extractVoiceValues(child, seen));
+  }
+
+  return [...new Set(voices.map((voice) => String(voice).trim()).filter(Boolean))];
+}
+
+function getOpenRouterFallbackVoices(modelId) {
+  const id = String(modelId).toLowerCase();
+  if (id.includes("x-ai") || id.includes("grok")) return ["eve", "ara", "leo", "rex", "sal"];
+  if (id.includes("google") || id.includes("gemini")) return [...GEMINI_TTS_VOICES];
+  if (id.includes("kokoro")) return ["af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky", "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx", "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily", "bm_daniel", "bm_fable", "bm_george", "bm_lewis"];
+  if (id.includes("orpheus")) return ["tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe"];
+  if (id.includes("sesame")) return ["conversational_a", "conversational_b", "read_speech_a", "read_speech_b"];
+  if (id.includes("mai") || id.includes("microsoft") || id.includes("azure")) return ["en-US-Harper:MAI-Voice-2", "en-US-Ava:MAI-Voice-2", "en-US-Andrew:MAI-Voice-2"];
+  return ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+}
+
+function formatVoiceLabel(voice) {
+  return String(voice)
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getRequestOrigin(req) {
+  const proto = String(req.headers["x-forwarded-proto"] || "http").split(",")[0].trim() || "http";
+  return `${proto}://${req.headers.host || `localhost:${PORT}`}`;
 }
 
 function splitText(text, targetLength, maxBytes = Number.POSITIVE_INFINITY) {

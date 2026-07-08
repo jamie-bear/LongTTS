@@ -11,7 +11,7 @@
       <section class="reader-panel" aria-label="Text and narration setup">
         <div class="masthead">
           <div>
-            <p class="eyebrow">Gemini, xAI, and Cloud TTS narration</p>
+            <p class="eyebrow">Gemini, xAI, OpenRouter, and Cloud TTS narration</p>
             <h1>LongTTS</h1>
           </div>
           <div class="meter-stack" aria-label="Text statistics">
@@ -25,6 +25,7 @@
           <select id="provider">
             <option value="gemini">Gemini API</option>
             <option value="xai">xAI</option>
+            <option value="openrouter">OpenRouter</option>
             <option value="google">Google Cloud TTS (OAuth)</option>
           </select>
           <span aria-hidden="true"></span>
@@ -35,6 +36,14 @@
             <input id="rememberKey" type="checkbox">
             <span>Keep for this browser session</span>
           </label>
+        </div>
+
+        <div id="openrouterModelPanel" class="provider-model-panel is-hidden" aria-live="polite">
+          <label for="openrouterModel">OpenRouter model</label>
+          <select id="openrouterModel" disabled>
+            <option value="">Enter an OpenRouter API key to load models</option>
+          </select>
+          <span id="openrouterModelHint">Models and voices load after your API key is entered.</span>
         </div>
 
         <div id="googleAuthPanel" class="google-auth-panel is-hidden" aria-live="polite">
