@@ -9,6 +9,9 @@ const elements = {
   googleAuthHint: document.querySelector("#googleAuthHint"),
   googleConnectButton: document.querySelector("#googleConnectButton"),
   googleDisconnectButton: document.querySelector("#googleDisconnectButton"),
+  openrouterModelPanel: document.querySelector("#openrouterModelPanel"),
+  openrouterModel: document.querySelector("#openrouterModel"),
+  openrouterModelHint: document.querySelector("#openrouterModelHint"),
   bookText: document.querySelector("#bookText"),
   fileInput: document.querySelector("#fileInput"),
   sampleButton: document.querySelector("#sampleButton"),
@@ -127,6 +130,19 @@ const PROVIDERS = {
       { value: "ar-AE", label: "Arabic (UAE)" }
     ]
   },
+  openrouter: {
+    label: "OpenRouter",
+    storageKey: "openrouterApiKey",
+    credentialLabel: "OpenRouter API key",
+    credentialPlaceholder: "sk-or-...",
+    defaultVoice: "alloy",
+    defaultLanguage: "auto",
+    defaultSegmentChars: 4500,
+    maxSegmentChars: 12000,
+    lowLatencyLabel: "",
+    voices: [{ value: "", label: "Select a model to load voices" }],
+    languages: [{ value: "auto", label: "Auto" }]
+  },
   google: {
     label: "Google Cloud TTS",
     storageKey: "googleTtsCredential",
@@ -167,13 +183,19 @@ const state = {
   credentialsByProvider: {
     gemini: "",
     xai: "",
-    google: ""
+    google: "",
+    openrouter: ""
   },
   segmentCharsByProvider: {
     gemini: PROVIDERS.gemini.defaultSegmentChars,
     xai: PROVIDERS.xai.defaultSegmentChars,
-    google: PROVIDERS.google.defaultSegmentChars
+    google: PROVIDERS.google.defaultSegmentChars,
+    openrouter: 4500
   },
+  openrouterModels: [],
+  openrouterVoicesByModel: {},
+  openrouterModel: "",
+  openrouterModelLoadTimer: null,
   googleOAuth: {
     configured: false,
     connected: false,
@@ -211,6 +233,8 @@ init();
 function init() {
   state.credentialsByProvider.gemini = sessionStorage.getItem(PROVIDERS.gemini.storageKey) || "";
   state.credentialsByProvider.xai = sessionStorage.getItem(PROVIDERS.xai.storageKey) || "";
+  state.credentialsByProvider.openrouter = sessionStorage.getItem(PROVIDERS.openrouter.storageKey) || "";
+  state.openrouterModel = sessionStorage.getItem("openrouterModel") || "";
   sessionStorage.removeItem(PROVIDERS.google.storageKey);
   state.provider = sanitizeProvider(sessionStorage.getItem("ttsProvider"));
   elements.provider.value = state.provider;
@@ -234,7 +258,8 @@ function init() {
   elements.clearTextButton.addEventListener("click", clearText);
   elements.fileInput.addEventListener("change", loadTextFile);
   elements.rememberKey.addEventListener("change", persistKeyPreference);
-  elements.apiKey.addEventListener("input", persistKeyPreference);
+  elements.apiKey.addEventListener("input", handleApiKeyInput);
+  elements.openrouterModel.addEventListener("change", handleOpenRouterModelChange);
   elements.googleConnectButton.addEventListener("click", connectGoogleOAuth);
   elements.googleDisconnectButton.addEventListener("click", disconnectGoogleOAuth);
   window.addEventListener("message", handleWindowMessage);
@@ -246,6 +271,9 @@ function init() {
   elements.audio.addEventListener("progress", sendTelemetry);
 
   refreshGoogleOAuthStatus();
+  if (state.provider === "openrouter" && state.credentialsByProvider.openrouter) {
+    scheduleOpenRouterModelsLoad(0);
+  }
 }
 
 function handleProviderChange() {
@@ -259,6 +287,16 @@ function handleProviderChange() {
   elements.rememberKey.checked = state.provider !== "google" && Boolean(sessionStorage.getItem(PROVIDERS[state.provider].storageKey));
   applyProviderConfig();
   updateTextStats();
+  if (state.provider === "openrouter" && state.credentialsByProvider.openrouter) {
+    scheduleOpenRouterModelsLoad(0);
+  }
+}
+
+function handleApiKeyInput() {
+  persistKeyPreference();
+  if (state.provider === "openrouter") {
+    scheduleOpenRouterModelsLoad(450);
+  }
 }
 
 function handleSegmentSizeChange() {
@@ -283,14 +321,18 @@ function applyProviderConfig() {
     elements.rememberKey.checked = false;
   }
   elements.lowLatencyLabel.textContent = config.lowLatencyLabel;
-  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google");
-  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google";
+  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter");
+  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter";
   elements.textNormalizationLine.classList.toggle("is-hidden", state.provider !== "xai");
   elements.textNormalization.disabled = state.provider !== "xai";
   elements.googleAuthPanel.classList.toggle("is-hidden", state.provider !== "google");
+  elements.openrouterModelPanel.classList.toggle("is-hidden", state.provider !== "openrouter");
   updateDownloadButton();
 
-  populateSelect(elements.voice, config.voices, previousVoice, config.defaultVoice);
+  const voiceOptions = state.provider === "openrouter"
+    ? getOpenRouterVoiceOptions(state.openrouterModel)
+    : config.voices;
+  populateSelect(elements.voice, voiceOptions, previousVoice, config.defaultVoice);
   populateSelect(elements.language, config.languages, previousLanguage, config.defaultLanguage);
 
   if (state.provider === "google") {
@@ -299,6 +341,7 @@ function applyProviderConfig() {
 
   syncSegmentSizeControl(config);
 
+  updateOpenRouterModelPanel();
   updateGoogleOAuthPanel();
 }
 
@@ -316,7 +359,7 @@ function syncSegmentSizeControl(config) {
 }
 
 function sanitizeProvider(value) {
-  if (value === "xai" || value === "google" || value === "gemini") return value;
+  if (value === "xai" || value === "google" || value === "gemini" || value === "openrouter") return value;
   return "gemini";
 }
 
@@ -336,6 +379,66 @@ function populateSelect(select, options, preferredValue, fallbackValue) {
   const hasPreferred = options.some((option) => option.value === preferredValue);
   const hasFallback = options.some((option) => option.value === fallbackValue);
   select.value = hasPreferred ? preferredValue : hasFallback ? fallbackValue : options[0].value;
+}
+
+function handleOpenRouterModelChange() {
+  state.openrouterModel = elements.openrouterModel.value;
+  sessionStorage.setItem("openrouterModel", state.openrouterModel);
+  populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), "", PROVIDERS.openrouter.defaultVoice);
+}
+
+function getOpenRouterVoiceOptions(modelId) {
+  return state.openrouterVoicesByModel[modelId] || PROVIDERS.openrouter.voices;
+}
+
+function updateOpenRouterModelPanel() {
+  if (state.provider !== "openrouter") return;
+  const hasKey = Boolean(elements.apiKey.value.trim());
+  elements.openrouterModel.disabled = !hasKey || state.openrouterModels.length === 0;
+  if (!hasKey) {
+    elements.openrouterModel.replaceChildren(new Option("Enter an OpenRouter API key to load models", ""));
+    elements.openrouterModelHint.textContent = "Models and voices load after your API key is entered.";
+  }
+}
+
+function scheduleOpenRouterModelsLoad(delay) {
+  window.clearTimeout(state.openrouterModelLoadTimer);
+  state.openrouterModelLoadTimer = window.setTimeout(loadOpenRouterModels, delay);
+}
+
+async function loadOpenRouterModels() {
+  const apiKey = elements.apiKey.value.trim();
+  if (!apiKey || state.provider !== "openrouter") {
+    updateOpenRouterModelPanel();
+    return;
+  }
+  elements.openrouterModel.disabled = true;
+  elements.openrouterModelHint.textContent = "Loading OpenRouter speech models...";
+  try {
+    const response = await fetch("/api/openrouter/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey })
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+    state.openrouterModels = body.models || [];
+    state.openrouterVoicesByModel = Object.fromEntries(state.openrouterModels.map((model) => [model.id, model.voices]));
+    const options = state.openrouterModels.map((model) => new Option(model.name || model.id, model.id));
+    elements.openrouterModel.replaceChildren(...(options.length ? options : [new Option("No speech models found", "")]));
+    const preferred = state.openrouterModels.some((model) => model.id === state.openrouterModel) ? state.openrouterModel : state.openrouterModels[0]?.id || "";
+    elements.openrouterModel.value = preferred;
+    state.openrouterModel = preferred;
+    if (preferred) sessionStorage.setItem("openrouterModel", preferred);
+    populateSelect(elements.voice, getOpenRouterVoiceOptions(preferred), "", PROVIDERS.openrouter.defaultVoice);
+    elements.openrouterModel.disabled = !state.openrouterModels.length;
+    elements.openrouterModelHint.textContent = state.openrouterModels.length
+      ? `Loaded ${state.openrouterModels.length.toLocaleString()} speech model${state.openrouterModels.length === 1 ? "" : "s"}.`
+      : "No OpenRouter speech models were returned for this key.";
+  } catch (error) {
+    elements.openrouterModel.replaceChildren(new Option("Could not load OpenRouter models", ""));
+    elements.openrouterModelHint.textContent = `OpenRouter model load failed: ${error.message}`;
+  }
 }
 
 function handleVoiceChange() {
@@ -771,7 +874,8 @@ function readOptions() {
     speed: Number(elements.speed.value),
     segmentChars: Number(elements.segmentChars.value),
     optimizeStreamingLatency: elements.lowLatency.checked,
-    textNormalization: elements.textNormalization.checked
+    textNormalization: elements.textNormalization.checked,
+    model: state.provider === "openrouter" ? elements.openrouterModel.value : ""
   };
 }
 
@@ -1046,6 +1150,8 @@ function updateTextStats() {
     elements.costEstimate.textContent = "Gemini pricing varies by model";
   } else if (state.provider === "google") {
     elements.costEstimate.textContent = "Cloud Gemini-TTS pricing varies by model";
+  } else if (state.provider === "openrouter") {
+    elements.costEstimate.textContent = "OpenRouter pricing varies by model";
   } else {
     elements.costEstimate.textContent = "Cloud TTS pricing varies by voice";
   }
