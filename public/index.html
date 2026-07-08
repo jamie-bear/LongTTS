@@ -44,6 +44,42 @@
           <span id="openrouterModelHint">Models and voices load after your API key is entered.</span>
         </div>
 
+        <div id="openrouterVoiceClonePanel" class="voice-clone-panel is-hidden" aria-live="polite">
+          <div class="voice-clone-header">
+            <div>
+              <strong>Zero-shot voice clones</strong>
+              <span id="openrouterVoiceCloneHint">Use a Voxtral TTS model to create and reuse cloned voices.</span>
+            </div>
+            <button id="refreshOpenrouterVoicesButton" type="button">Refresh voices</button>
+          </div>
+          <div class="voice-clone-form">
+            <label>
+              <span>Name</span>
+              <input id="voiceCloneName" type="text" placeholder="Narrator voice">
+            </label>
+            <label>
+              <span>Language codes</span>
+              <input id="voiceCloneLanguages" type="text" placeholder="en, fr">
+            </label>
+            <label>
+              <span>Gender</span>
+              <select id="voiceCloneGender">
+                <option value="">Unspecified</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </label>
+            <label>
+              <span>Reference audio</span>
+              <input id="voiceCloneAudio" type="file" accept="audio/*">
+            </label>
+            <button id="saveVoiceCloneButton" type="button" class="primary">Create voice clone</button>
+            <button id="deleteVoiceCloneButton" type="button">Delete selected clone</button>
+          </div>
+          <p class="voice-clone-policy">Only clone voices you have permission to use. Disclose AI-generated speech where required.</p>
+        </div>
+
         <div id="googleAuthPanel" class="google-auth-panel is-hidden" aria-live="polite">
           <div>
             <strong id="googleAuthState">Google OAuth checking...</strong>

@@ -12,6 +12,15 @@ const elements = {
   openrouterModelPanel: document.querySelector("#openrouterModelPanel"),
   openrouterModel: document.querySelector("#openrouterModel"),
   openrouterModelHint: document.querySelector("#openrouterModelHint"),
+  openrouterVoiceClonePanel: document.querySelector("#openrouterVoiceClonePanel"),
+  openrouterVoiceCloneHint: document.querySelector("#openrouterVoiceCloneHint"),
+  refreshOpenrouterVoicesButton: document.querySelector("#refreshOpenrouterVoicesButton"),
+  voiceCloneName: document.querySelector("#voiceCloneName"),
+  voiceCloneLanguages: document.querySelector("#voiceCloneLanguages"),
+  voiceCloneGender: document.querySelector("#voiceCloneGender"),
+  voiceCloneAudio: document.querySelector("#voiceCloneAudio"),
+  saveVoiceCloneButton: document.querySelector("#saveVoiceCloneButton"),
+  deleteVoiceCloneButton: document.querySelector("#deleteVoiceCloneButton"),
   bookText: document.querySelector("#bookText"),
   fileInput: document.querySelector("#fileInput"),
   sampleButton: document.querySelector("#sampleButton"),
@@ -168,6 +177,9 @@ const PROVIDERS = {
   }
 };
 
+const OPENROUTER_VOICE_CLONES_STORAGE_KEY = "openrouterVoiceClones";
+const MAX_VOICE_CLONE_AUDIO_BYTES = 4 * 1024 * 1024;
+
 const SAMPLE_TEXT = `Chapter One
 
 The morning train crossed the valley just as the clouds began to lift from the river. Mara watched the light spill across the windows and tried to remember the sentence she had written before sleep took her. It had been a good sentence, she was sure of that, the sort that opened a door in the mind and made the next page feel inevitable.
@@ -195,6 +207,7 @@ const state = {
   openrouterModels: [],
   openrouterVoicesByModel: {},
   openrouterModel: "",
+  openrouterVoiceClones: [],
   openrouterModelLoadTimer: null,
   googleOAuth: {
     configured: false,
@@ -260,6 +273,9 @@ function init() {
   elements.rememberKey.addEventListener("change", persistKeyPreference);
   elements.apiKey.addEventListener("input", handleApiKeyInput);
   elements.openrouterModel.addEventListener("change", handleOpenRouterModelChange);
+  elements.refreshOpenrouterVoicesButton.addEventListener("click", () => loadOpenRouterVoiceClones());
+  elements.saveVoiceCloneButton.addEventListener("click", saveOpenRouterVoiceClone);
+  elements.deleteVoiceCloneButton.addEventListener("click", deleteSelectedOpenRouterVoiceClone);
   elements.googleConnectButton.addEventListener("click", connectGoogleOAuth);
   elements.googleDisconnectButton.addEventListener("click", disconnectGoogleOAuth);
   window.addEventListener("message", handleWindowMessage);
@@ -327,6 +343,7 @@ function applyProviderConfig() {
   elements.textNormalization.disabled = state.provider !== "xai";
   elements.googleAuthPanel.classList.toggle("is-hidden", state.provider !== "google");
   elements.openrouterModelPanel.classList.toggle("is-hidden", state.provider !== "openrouter");
+  elements.openrouterVoiceClonePanel.classList.toggle("is-hidden", state.provider !== "openrouter" || !isVoxtralModel(state.openrouterModel));
   updateDownloadButton();
 
   const voiceOptions = state.provider === "openrouter"
@@ -373,6 +390,7 @@ function populateSelect(select, options, preferredValue, fallbackValue) {
     option.value = optionConfig.value;
     option.textContent = optionConfig.label;
     if (optionConfig.language) option.dataset.language = optionConfig.language;
+    if (optionConfig.disabled) option.disabled = true;
     return option;
   }));
 
@@ -385,10 +403,30 @@ function handleOpenRouterModelChange() {
   state.openrouterModel = elements.openrouterModel.value;
   sessionStorage.setItem("openrouterModel", state.openrouterModel);
   populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), "", PROVIDERS.openrouter.defaultVoice);
+  elements.openrouterVoiceClonePanel.classList.toggle("is-hidden", state.provider !== "openrouter" || !isVoxtralModel(state.openrouterModel));
+  if (isVoxtralModel(state.openrouterModel)) loadOpenRouterVoiceClones();
+}
+
+function isVoxtralModel(modelId) {
+  return /voxtral/i.test(String(modelId || ""));
+}
+
+function formatVoiceCloneOption(voice) {
+  const name = voice.name || voice.id;
+  const languageSuffix = Array.isArray(voice.languages) && voice.languages.length ? ` (${voice.languages.join(", ")})` : "";
+  return { value: `voice_id:${voice.id}`, label: `Clone: ${name}${languageSuffix}` };
+}
+
+function mergeOpenRouterVoiceOptions(baseOptions) {
+  const cloneOptions = state.openrouterVoiceClones.map(formatVoiceCloneOption);
+  return cloneOptions.length
+    ? [{ value: "", label: "Built-in voices", disabled: true }, ...baseOptions, { value: "", label: "Saved voice clones", disabled: true }, ...cloneOptions]
+    : baseOptions;
 }
 
 function getOpenRouterVoiceOptions(modelId) {
-  return state.openrouterVoicesByModel[modelId] || PROVIDERS.openrouter.voices;
+  const baseOptions = state.openrouterVoicesByModel[modelId] || PROVIDERS.openrouter.voices;
+  return isVoxtralModel(modelId) ? mergeOpenRouterVoiceOptions(baseOptions) : baseOptions;
 }
 
 function updateOpenRouterModelPanel() {
@@ -420,7 +458,7 @@ async function loadOpenRouterModels() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey })
     });
-    const body = await response.json();
+    const body = await readJsonResponse(response);
     if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
     state.openrouterModels = body.models || [];
     state.openrouterVoicesByModel = Object.fromEntries(state.openrouterModels.map((model) => [model.id, model.voices]));
@@ -430,8 +468,10 @@ async function loadOpenRouterModels() {
     elements.openrouterModel.value = preferred;
     state.openrouterModel = preferred;
     if (preferred) sessionStorage.setItem("openrouterModel", preferred);
+    if (isVoxtralModel(preferred)) await loadOpenRouterVoiceClones(false);
     populateSelect(elements.voice, getOpenRouterVoiceOptions(preferred), "", PROVIDERS.openrouter.defaultVoice);
     elements.openrouterModel.disabled = !state.openrouterModels.length;
+    elements.openrouterVoiceClonePanel.classList.toggle("is-hidden", state.provider !== "openrouter" || !isVoxtralModel(preferred));
     elements.openrouterModelHint.textContent = state.openrouterModels.length
       ? `Loaded ${state.openrouterModels.length.toLocaleString()} speech model${state.openrouterModels.length === 1 ? "" : "s"}.`
       : "No OpenRouter speech models were returned for this key.";
@@ -441,10 +481,137 @@ async function loadOpenRouterModels() {
   }
 }
 
+async function loadOpenRouterVoiceClones(updateSelect = true) {
+  if (state.provider !== "openrouter" || !isVoxtralModel(state.openrouterModel)) return;
+  state.openrouterVoiceClones = readStoredOpenRouterVoiceClones();
+  if (updateSelect) populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), elements.voice.value, PROVIDERS.openrouter.defaultVoice);
+  syncVoiceCloneFormToSelection();
+  elements.openrouterVoiceCloneHint.textContent = `Loaded ${state.openrouterVoiceClones.length.toLocaleString()} locally saved voice clone${state.openrouterVoiceClones.length === 1 ? "" : "s"}.`;
+}
+
+async function saveOpenRouterVoiceClone() {
+  const apiKey = elements.apiKey.value.trim();
+  const [file] = elements.voiceCloneAudio.files;
+  const selectedCloneId = getSelectedVoiceCloneId();
+  const name = elements.voiceCloneName.value.trim();
+  if (!apiKey) return setStatus("Add your OpenRouter API key before managing Voxtral voice clones.");
+  if (!name) return setStatus("Name the voice clone first.");
+  if (!selectedCloneId && !file) return setStatus("Choose reference audio to create a voice clone.");
+  if (file && file.size > MAX_VOICE_CLONE_AUDIO_BYTES) return setStatus("Reference audio must be 4 MB or smaller for local saved clones.");
+  elements.saveVoiceCloneButton.disabled = true;
+  try {
+    const existing = state.openrouterVoiceClones.find((voice) => voice.id === selectedCloneId);
+    const clone = {
+      id: selectedCloneId || createLocalVoiceCloneId(),
+      name,
+      languages: elements.voiceCloneLanguages.value.split(",").map((v) => v.trim()).filter(Boolean),
+      gender: elements.voiceCloneGender.value,
+      sampleAudio: existing?.sampleAudio || "",
+      sampleFilename: existing?.sampleFilename || "sample.wav",
+      updatedAt: new Date().toISOString()
+    };
+    if (file) {
+      clone.sampleFilename = file.name;
+      clone.sampleAudio = await fileToBase64(file);
+    }
+    if (!clone.sampleAudio) throw new Error("Reference audio is required to create a voice clone.");
+    state.openrouterVoiceClones = [clone, ...state.openrouterVoiceClones.filter((voice) => voice.id !== clone.id)];
+    writeStoredOpenRouterVoiceClones(state.openrouterVoiceClones);
+    elements.voiceCloneAudio.value = "";
+    await loadOpenRouterVoiceClones();
+    elements.voice.value = `voice_id:${clone.id}`;
+    syncVoiceCloneFormToSelection();
+    setStatus(selectedCloneId ? "Voice clone updated locally." : "Voice clone saved locally.");
+  } catch (error) {
+    setStatus(`Voice clone save failed: ${error.message}`);
+  } finally {
+    elements.saveVoiceCloneButton.disabled = false;
+  }
+}
+
+async function deleteSelectedOpenRouterVoiceClone() {
+  const apiKey = elements.apiKey.value.trim();
+  const voiceId = getSelectedVoiceCloneId();
+  if (!voiceId) return setStatus("Select a saved voice clone to delete.");
+  elements.deleteVoiceCloneButton.disabled = true;
+  try {
+    state.openrouterVoiceClones = state.openrouterVoiceClones.filter((voice) => voice.id !== voiceId);
+    writeStoredOpenRouterVoiceClones(state.openrouterVoiceClones);
+    elements.voice.value = PROVIDERS.openrouter.defaultVoice;
+    await loadOpenRouterVoiceClones();
+    setStatus("Voice clone deleted locally.");
+  } catch (error) {
+    setStatus(`Voice clone delete failed: ${error.message}`);
+  } finally {
+    elements.deleteVoiceCloneButton.disabled = false;
+  }
+}
+
+function getSelectedVoiceCloneId() {
+  return elements.voice.value.startsWith("voice_id:") ? elements.voice.value.slice("voice_id:".length) : "";
+}
+
+function getSelectedVoiceClone() {
+  const voiceId = getSelectedVoiceCloneId();
+  return state.openrouterVoiceClones.find((voice) => voice.id === voiceId) || null;
+}
+
+function createLocalVoiceCloneId() {
+  return `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function readStoredOpenRouterVoiceClones() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OPENROUTER_VOICE_CLONES_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((voice) => voice?.id && voice?.sampleAudio) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredOpenRouterVoiceClones(voices) {
+  localStorage.setItem(OPENROUTER_VOICE_CLONES_STORAGE_KEY, JSON.stringify(voices));
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const compact = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    throw new Error(`Expected JSON from ${response.url || "the server"}, but received ${response.headers.get("content-type") || "a non-JSON response"}${compact ? `: ${compact.slice(0, 180)}` : "."}`);
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result).split(",")[1] || ""));
+    reader.addEventListener("error", () => reject(reader.error || new Error("Could not read audio file.")));
+    reader.readAsDataURL(file);
+  });
+}
+
 function handleVoiceChange() {
   if (state.provider === "google") {
     syncGoogleLanguageToVoice();
   }
+
+  if (state.provider === "openrouter") {
+    syncVoiceCloneFormToSelection();
+  }
+}
+
+function syncVoiceCloneFormToSelection() {
+  const voiceId = getSelectedVoiceCloneId();
+  const selectedClone = state.openrouterVoiceClones.find((voice) => voice.id === voiceId);
+  elements.deleteVoiceCloneButton.disabled = !selectedClone;
+  elements.saveVoiceCloneButton.textContent = selectedClone ? "Update voice clone" : "Create voice clone";
+  if (!selectedClone) return;
+  elements.voiceCloneName.value = selectedClone.name || "";
+  elements.voiceCloneLanguages.value = Array.isArray(selectedClone.languages) ? selectedClone.languages.join(", ") : "";
+  elements.voiceCloneGender.value = selectedClone.gender || "";
 }
 
 function syncGoogleLanguageToVoice() {
@@ -875,7 +1042,10 @@ function readOptions() {
     segmentChars: Number(elements.segmentChars.value),
     optimizeStreamingLatency: elements.lowLatency.checked,
     textNormalization: elements.textNormalization.checked,
-    model: state.provider === "openrouter" ? elements.openrouterModel.value : ""
+    model: state.provider === "openrouter" ? elements.openrouterModel.value : "",
+    voiceId: state.provider === "openrouter" ? getSelectedVoiceCloneId() : "",
+    voiceReferenceAudio: state.provider === "openrouter" ? getSelectedVoiceClone()?.sampleAudio || "" : "",
+    voiceReferenceFilename: state.provider === "openrouter" ? getSelectedVoiceClone()?.sampleFilename || "" : ""
   };
 }
 
