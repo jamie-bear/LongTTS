@@ -641,8 +641,8 @@ function createNarrationSession(client) {
     sendJsonWs(client, {
       type: "meta",
       provider: options.provider,
-      audioEncoding: getProviderAudioEncoding(options.provider),
-      sampleRate: getProviderSampleRate(options.provider),
+      audioEncoding: getProviderAudioEncoding(options),
+      sampleRate: getProviderSampleRate(options),
       channels: 1,
       totalChars: text.length,
       totalSegments: state.segments.length,
@@ -1043,12 +1043,26 @@ function normalizeGeminiVoiceName(voice) {
   return GEMINI_TTS_VOICES.has(candidate) ? candidate : "";
 }
 
-function getProviderAudioEncoding(provider) {
-  return provider === "gemini" || provider === "google" ? "pcm_s16le" : "mpeg";
+function getProviderAudioEncoding(optionsOrProvider) {
+  const provider = typeof optionsOrProvider === "string" ? optionsOrProvider : optionsOrProvider.provider;
+  if (provider === "gemini" || provider === "google") return "pcm_s16le";
+  if (provider === "openrouter" && requiresOpenRouterPcm(optionsOrProvider.model)) return "pcm_s16le";
+  return "mpeg";
 }
 
-function getProviderSampleRate(provider) {
-  return provider === "gemini" || provider === "google" ? GEMINI_SAMPLE_RATE : 24000;
+function getProviderSampleRate(optionsOrProvider) {
+  const provider = typeof optionsOrProvider === "string" ? optionsOrProvider : optionsOrProvider.provider;
+  if (provider === "gemini" || provider === "google") return GEMINI_SAMPLE_RATE;
+  if (provider === "openrouter" && requiresOpenRouterPcm(optionsOrProvider.model)) return GEMINI_SAMPLE_RATE;
+  return 24000;
+}
+
+function getOpenRouterResponseFormat(model) {
+  return requiresOpenRouterPcm(model) ? "pcm" : "mp3";
+}
+
+function requiresOpenRouterPcm(model) {
+  return /(^|[/:-])(?:google|gemini)(?:[/:-]|$)/i.test(String(model || ""));
 }
 
 function buildXaiUrl(options) {
@@ -1083,7 +1097,7 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
       model: options.model,
       input: text,
       voice: options.voice,
-      response_format: "mp3",
+      response_format: getOpenRouterResponseFormat(options.model),
       speed: options.speed
     }),
     signal
