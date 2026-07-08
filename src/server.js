@@ -1109,7 +1109,9 @@ function sanitizeOptions(raw) {
         ? "alloy"
         : "eve";
   const voiceId = provider === "openrouter" ? String(raw.voiceId || "").trim() : "";
-  const voice = voiceId ? "" : sanitizeVoice(raw.voice, defaultVoice, provider);
+  const voice = sanitizeVoice(raw.voice, defaultVoice, provider);
+  const voiceReferenceAudio = provider === "openrouter" ? sanitizeBase64Audio(raw.voiceReferenceAudio) : "";
+  const voiceReferenceFilename = provider === "openrouter" ? String(raw.voiceReferenceFilename || "").trim().slice(0, 160) : "";
   const language = sanitizeLanguage(raw.language, provider, voice);
   const speed = clamp(Number(raw.speed || 1), 0.7, 1.5);
   const defaultSegmentChars = getDefaultSegmentChars(provider);
@@ -1127,6 +1129,8 @@ function sanitizeOptions(raw) {
     model,
     voice,
     voiceId,
+    voiceReferenceAudio,
+    voiceReferenceFilename,
     language: language || "auto",
     speed,
     segmentChars,
@@ -1134,6 +1138,14 @@ function sanitizeOptions(raw) {
     optimizeStreamingLatency,
     textNormalization
   };
+}
+
+function sanitizeBase64Audio(value) {
+  const audio = String(value || "").trim();
+  if (!audio) return "";
+  if (!/^[A-Za-z0-9+/=]+$/.test(audio)) throw new Error("Voice reference audio must be base64-encoded.");
+  if (audio.length > 6 * 1024 * 1024) throw new Error("Voice reference audio is too large.");
+  return audio;
 }
 
 function getDefaultSegmentChars(provider) {
@@ -1237,7 +1249,17 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
     body: JSON.stringify({
       model: options.model,
       input: text,
-      ...(options.voiceId ? { voice_id: options.voiceId } : { voice: options.voice }),
+      voice: options.voice,
+      ...(options.voiceReferenceAudio ? {
+        provider: {
+          options: {
+            mistral: {
+              ref_audio: options.voiceReferenceAudio,
+              ...(options.voiceReferenceFilename ? { ref_audio_filename: options.voiceReferenceFilename } : {})
+            }
+          }
+        }
+      } : options.voiceId ? { voice_id: options.voiceId } : {}),
       response_format: getOpenRouterResponseFormat(options.model),
       speed: options.speed
     }),

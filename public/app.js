@@ -177,6 +177,9 @@ const PROVIDERS = {
   }
 };
 
+const OPENROUTER_VOICE_CLONES_STORAGE_KEY = "openrouterVoiceClones";
+const MAX_VOICE_CLONE_AUDIO_BYTES = 4 * 1024 * 1024;
+
 const SAMPLE_TEXT = `Chapter One
 
 The morning train crossed the valley just as the clouds began to lift from the river. Mara watched the light spill across the windows and tried to remember the sentence she had written before sleep took her. It had been a good sentence, she was sure of that, the sort that opened a door in the mind and made the next page feel inevitable.
@@ -480,24 +483,10 @@ async function loadOpenRouterModels() {
 
 async function loadOpenRouterVoiceClones(updateSelect = true) {
   if (state.provider !== "openrouter" || !isVoxtralModel(state.openrouterModel)) return;
-  const apiKey = elements.apiKey.value.trim();
-  if (!apiKey) return;
-  elements.openrouterVoiceCloneHint.textContent = "Loading saved Voxtral voices...";
-  try {
-    const response = await fetch("/api/openrouter/voices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey })
-    });
-    const body = await readJsonResponse(response);
-    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
-    state.openrouterVoiceClones = body.voices || [];
-    if (updateSelect) populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), elements.voice.value, PROVIDERS.openrouter.defaultVoice);
-    syncVoiceCloneFormToSelection();
-    elements.openrouterVoiceCloneHint.textContent = `Loaded ${state.openrouterVoiceClones.length.toLocaleString()} saved voice clone${state.openrouterVoiceClones.length === 1 ? "" : "s"}.`;
-  } catch (error) {
-    elements.openrouterVoiceCloneHint.textContent = `Could not load saved voices: ${error.message}`;
-  }
+  state.openrouterVoiceClones = readStoredOpenRouterVoiceClones();
+  if (updateSelect) populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), elements.voice.value, PROVIDERS.openrouter.defaultVoice);
+  syncVoiceCloneFormToSelection();
+  elements.openrouterVoiceCloneHint.textContent = `Loaded ${state.openrouterVoiceClones.length.toLocaleString()} locally saved voice clone${state.openrouterVoiceClones.length === 1 ? "" : "s"}.`;
 }
 
 async function saveOpenRouterVoiceClone() {
@@ -508,28 +497,31 @@ async function saveOpenRouterVoiceClone() {
   if (!apiKey) return setStatus("Add your OpenRouter API key before managing Voxtral voice clones.");
   if (!name) return setStatus("Name the voice clone first.");
   if (!selectedCloneId && !file) return setStatus("Choose reference audio to create a voice clone.");
+  if (file && file.size > MAX_VOICE_CLONE_AUDIO_BYTES) return setStatus("Reference audio must be 4 MB or smaller for local saved clones.");
   elements.saveVoiceCloneButton.disabled = true;
   try {
-    const payload = {
-      apiKey,
-      voiceId: selectedCloneId,
+    const existing = state.openrouterVoiceClones.find((voice) => voice.id === selectedCloneId);
+    const clone = {
+      id: selectedCloneId || createLocalVoiceCloneId(),
       name,
       languages: elements.voiceCloneLanguages.value.split(",").map((v) => v.trim()).filter(Boolean),
-      gender: elements.voiceCloneGender.value
+      gender: elements.voiceCloneGender.value,
+      sampleAudio: existing?.sampleAudio || "",
+      sampleFilename: existing?.sampleFilename || "sample.wav",
+      updatedAt: new Date().toISOString()
     };
     if (file) {
-      payload.sampleFilename = file.name;
-      payload.sampleAudio = await fileToBase64(file);
+      clone.sampleFilename = file.name;
+      clone.sampleAudio = await fileToBase64(file);
     }
-    const response = await fetch(selectedCloneId ? "/api/openrouter/voices/update" : "/api/openrouter/voices/create", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
-    });
-    const body = await readJsonResponse(response);
-    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+    if (!clone.sampleAudio) throw new Error("Reference audio is required to create a voice clone.");
+    state.openrouterVoiceClones = [clone, ...state.openrouterVoiceClones.filter((voice) => voice.id !== clone.id)];
+    writeStoredOpenRouterVoiceClones(state.openrouterVoiceClones);
     elements.voiceCloneAudio.value = "";
     await loadOpenRouterVoiceClones();
-    if (body.voice?.id) elements.voice.value = `voice_id:${body.voice.id}`;
-    setStatus(selectedCloneId ? "Voice clone updated." : "Voice clone created.");
+    elements.voice.value = `voice_id:${clone.id}`;
+    syncVoiceCloneFormToSelection();
+    setStatus(selectedCloneId ? "Voice clone updated locally." : "Voice clone saved locally.");
   } catch (error) {
     setStatus(`Voice clone save failed: ${error.message}`);
   } finally {
@@ -543,13 +535,11 @@ async function deleteSelectedOpenRouterVoiceClone() {
   if (!voiceId) return setStatus("Select a saved voice clone to delete.");
   elements.deleteVoiceCloneButton.disabled = true;
   try {
-    const response = await fetch("/api/openrouter/voices/delete", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, voiceId })
-    });
-    const body = await readJsonResponse(response);
-    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+    state.openrouterVoiceClones = state.openrouterVoiceClones.filter((voice) => voice.id !== voiceId);
+    writeStoredOpenRouterVoiceClones(state.openrouterVoiceClones);
+    elements.voice.value = PROVIDERS.openrouter.defaultVoice;
     await loadOpenRouterVoiceClones();
-    setStatus("Voice clone deleted.");
+    setStatus("Voice clone deleted locally.");
   } catch (error) {
     setStatus(`Voice clone delete failed: ${error.message}`);
   } finally {
@@ -561,6 +551,27 @@ function getSelectedVoiceCloneId() {
   return elements.voice.value.startsWith("voice_id:") ? elements.voice.value.slice("voice_id:".length) : "";
 }
 
+function getSelectedVoiceClone() {
+  const voiceId = getSelectedVoiceCloneId();
+  return state.openrouterVoiceClones.find((voice) => voice.id === voiceId) || null;
+}
+
+function createLocalVoiceCloneId() {
+  return `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function readStoredOpenRouterVoiceClones() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OPENROUTER_VOICE_CLONES_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((voice) => voice?.id && voice?.sampleAudio) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredOpenRouterVoiceClones(voices) {
+  localStorage.setItem(OPENROUTER_VOICE_CLONES_STORAGE_KEY, JSON.stringify(voices));
+}
 
 async function readJsonResponse(response) {
   const text = await response.text().catch(() => "");
@@ -1032,7 +1043,9 @@ function readOptions() {
     optimizeStreamingLatency: elements.lowLatency.checked,
     textNormalization: elements.textNormalization.checked,
     model: state.provider === "openrouter" ? elements.openrouterModel.value : "",
-    voiceId: state.provider === "openrouter" ? getSelectedVoiceCloneId() : ""
+    voiceId: state.provider === "openrouter" ? getSelectedVoiceCloneId() : "",
+    voiceReferenceAudio: state.provider === "openrouter" ? getSelectedVoiceClone()?.sampleAudio || "" : "",
+    voiceReferenceFilename: state.provider === "openrouter" ? getSelectedVoiceClone()?.sampleFilename || "" : ""
   };
 }
 
