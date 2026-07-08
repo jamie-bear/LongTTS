@@ -154,6 +154,7 @@ h1 {
   display: none !important;
 }
 
+.provider-model-panel,
 .google-auth-panel {
   display: flex;
   align-items: center;
@@ -162,6 +163,30 @@ h1 {
   margin: -2px 0 16px;
   padding: 12px 0 14px;
   border-block: 1px solid var(--line);
+}
+
+
+.provider-model-panel {
+  display: grid;
+  grid-template-columns: 132px minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 16px;
+  padding: 12px 0 14px;
+  border-block: 1px solid var(--line);
+}
+
+.provider-model-panel label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.provider-model-panel span {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
 }
 
 .google-auth-panel strong,
