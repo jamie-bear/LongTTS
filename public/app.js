@@ -89,7 +89,7 @@ const PROVIDERS = {
     ]
   },
   xai: {
-    label: "xAI",
+    label: "xAI: Grok TTS 1.0",
     storageKey: "xaiApiKey",
     credentialLabel: "xAI API key",
     credentialPlaceholder: "xai-...",
@@ -131,7 +131,7 @@ const PROVIDERS = {
     ]
   },
   openrouter: {
-    label: "OpenRouter",
+    label: "OpenRouter: Various Models",
     storageKey: "openrouterApiKey",
     credentialLabel: "OpenRouter API key",
     credentialPlaceholder: "sk-or-...",
@@ -144,7 +144,7 @@ const PROVIDERS = {
     languages: [{ value: "auto", label: "Auto" }]
   },
   google: {
-    label: "Google Cloud TTS",
+    label: "Google: Gemini 3.1 Flash TTS (Preview)",
     storageKey: "googleTtsCredential",
     credentialLabel: "",
     credentialPlaceholder: "",
@@ -179,7 +179,7 @@ She found the notebook in her coat pocket. Between two pages was a ticket, folde
 Mara looked down at the ticket again. The ink was fresh. Under the station name, in a careful hand, someone had written: Bring the whole story.`;
 
 const state = {
-  provider: "gemini",
+  provider: "openrouter",
   credentialsByProvider: {
     gemini: "",
     xai: "",
@@ -359,8 +359,8 @@ function syncSegmentSizeControl(config) {
 }
 
 function sanitizeProvider(value) {
-  if (value === "xai" || value === "google" || value === "gemini" || value === "openrouter") return value;
-  return "gemini";
+  if (value === "xai" || value === "google" || value === "openrouter") return value;
+  return "openrouter";
 }
 
 function usesPcmPlayback(provider) {
@@ -1002,7 +1002,7 @@ function downloadAudio() {
 
 function updateDownloadButton() {
   const extension = usesPcmPlayback(state.provider) || state.audioEncoding === "pcm_s16le" ? "WAV" : "MP3";
-  elements.downloadButton.textContent = `Download continuous ${extension}`;
+  elements.downloadButton.textContent = `Download ${extension}`;
   elements.downloadButton.disabled = !state.stitchedAudio;
 }
 
