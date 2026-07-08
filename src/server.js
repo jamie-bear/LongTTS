@@ -313,11 +313,33 @@ async function requestOpenRouterJson(url, { apiKey, method = "GET", payload = nu
     },
     body: payload ? JSON.stringify(payload) : undefined
   });
-  const parsed = await response.json().catch(() => null);
+  const text = await response.text().catch(() => "");
+  const parsed = parseJsonText(text);
   if (!response.ok) {
-    throw new Error(parsed?.error?.message || parsed?.message || `${response.status} ${response.statusText}`);
+    throw new Error(parsed?.error?.message || parsed?.message || summarizeNonJsonResponse(text, response));
+  }
+  if (!parsed) {
+    throw new Error(`OpenRouter returned ${describeContentType(response)} instead of JSON: ${summarizeNonJsonResponse(text, response)}`);
   }
   return parsed;
+}
+
+function parseJsonText(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function describeContentType(response) {
+  return response.headers.get("content-type") || "a non-JSON response";
+}
+
+function summarizeNonJsonResponse(text, response) {
+  const compact = String(text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return compact ? compact.slice(0, 240) : `${response.status} ${response.statusText}`;
 }
 
 function buildOpenRouterVoicePayload(body, requireSample) {

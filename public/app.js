@@ -455,7 +455,7 @@ async function loadOpenRouterModels() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey })
     });
-    const body = await response.json();
+    const body = await readJsonResponse(response);
     if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
     state.openrouterModels = body.models || [];
     state.openrouterVoicesByModel = Object.fromEntries(state.openrouterModels.map((model) => [model.id, model.voices]));
@@ -489,7 +489,7 @@ async function loadOpenRouterVoiceClones(updateSelect = true) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey })
     });
-    const body = await response.json();
+    const body = await readJsonResponse(response);
     if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
     state.openrouterVoiceClones = body.voices || [];
     if (updateSelect) populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), elements.voice.value, PROVIDERS.openrouter.defaultVoice);
@@ -524,7 +524,7 @@ async function saveOpenRouterVoiceClone() {
     const response = await fetch(selectedCloneId ? "/api/openrouter/voices/update" : "/api/openrouter/voices/create", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
     });
-    const body = await response.json();
+    const body = await readJsonResponse(response);
     if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
     elements.voiceCloneAudio.value = "";
     await loadOpenRouterVoiceClones();
@@ -546,7 +546,7 @@ async function deleteSelectedOpenRouterVoiceClone() {
     const response = await fetch("/api/openrouter/voices/delete", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey, voiceId })
     });
-    const body = await response.json().catch(() => ({}));
+    const body = await readJsonResponse(response);
     if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
     await loadOpenRouterVoiceClones();
     setStatus("Voice clone deleted.");
@@ -559,6 +559,18 @@ async function deleteSelectedOpenRouterVoiceClone() {
 
 function getSelectedVoiceCloneId() {
   return elements.voice.value.startsWith("voice_id:") ? elements.voice.value.slice("voice_id:".length) : "";
+}
+
+
+async function readJsonResponse(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const compact = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    throw new Error(`Expected JSON from ${response.url || "the server"}, but received ${response.headers.get("content-type") || "a non-JSON response"}${compact ? `: ${compact.slice(0, 180)}` : "."}`);
+  }
 }
 
 function fileToBase64(file) {
