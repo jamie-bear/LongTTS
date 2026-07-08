@@ -66,7 +66,7 @@ If your OAuth consent screen is in testing mode, add your Google account as a te
 
 ## Provider Notes
 
-OpenRouter uses `https://openrouter.ai/api/v1/audio/speech` for speech generation and `https://openrouter.ai/api/v1/models?output_modalities=speech` for model discovery. When a Voxtral TTS model is selected, the app also exposes local saved voice management through the OpenRouter provider: create a reusable voice from reference audio, refresh the locally saved voice list, update voice metadata, delete saved clones, and select a saved clone for narration. The reference audio is stored in the browser and sent through OpenRouter speech generation as Mistral provider-specific `ref_audio`; built-in model voices are sent as `voice`.
+OpenRouter uses `https://openrouter.ai/api/v1/audio/speech` for speech generation and `https://openrouter.ai/api/v1/models?output_modalities=speech` for model discovery. When a Voxtral TTS model is selected, the app also exposes local saved voice management through the OpenRouter provider: create a reusable voice from reference audio, refresh the locally saved voice list, update voice metadata, delete saved clones, and select a saved clone for narration. The reference audio is stored in the browser and sent through OpenRouter speech generation as Mistral-compatible `ref_audio`; built-in model voices are sent as `voice`.
 
 Gemini API is the simplest Google option. It uses the Gemini Developer API endpoint `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent` with an AI Studio API key. Gemini TTS returns raw 24 kHz PCM audio, so the browser wraps it as WAV for playback and download.
 

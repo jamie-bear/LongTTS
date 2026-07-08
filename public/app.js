@@ -429,6 +429,11 @@ function getOpenRouterVoiceOptions(modelId) {
   return isVoxtralModel(modelId) ? mergeOpenRouterVoiceOptions(baseOptions) : baseOptions;
 }
 
+function getOpenRouterBuiltInVoiceFallback(modelId) {
+  const baseOptions = state.openrouterVoicesByModel[modelId] || [];
+  return baseOptions.find((option) => option.value && !option.disabled)?.value || PROVIDERS.openrouter.defaultVoice;
+}
+
 function updateOpenRouterModelPanel() {
   if (state.provider !== "openrouter") return;
   const hasKey = Boolean(elements.apiKey.value.trim());
@@ -508,6 +513,7 @@ async function saveOpenRouterVoiceClone() {
       gender: elements.voiceCloneGender.value,
       sampleAudio: existing?.sampleAudio || "",
       sampleFilename: existing?.sampleFilename || "sample.wav",
+      baseVoice: existing?.baseVoice || getOpenRouterBuiltInVoiceFallback(state.openrouterModel),
       updatedAt: new Date().toISOString()
     };
     if (file) {
@@ -1036,7 +1042,7 @@ function endMediaStream() {
 function readOptions() {
   return {
     provider: state.provider,
-    voice: elements.voice.value,
+    voice: state.provider === "openrouter" ? getSelectedVoiceClone()?.baseVoice || elements.voice.value : elements.voice.value,
     language: elements.language.value,
     speed: Number(elements.speed.value),
     segmentChars: Number(elements.segmentChars.value),

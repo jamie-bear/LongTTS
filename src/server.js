@@ -1109,7 +1109,8 @@ function sanitizeOptions(raw) {
         ? "alloy"
         : "eve";
   const voiceId = provider === "openrouter" ? String(raw.voiceId || "").trim() : "";
-  const voice = sanitizeVoice(raw.voice, defaultVoice, provider);
+  const rawVoice = String(raw.voice || "").startsWith("voice_id:") ? defaultVoice : raw.voice;
+  const voice = sanitizeVoice(rawVoice, defaultVoice, provider);
   const voiceReferenceAudio = provider === "openrouter" ? sanitizeBase64Audio(raw.voiceReferenceAudio) : "";
   const voiceReferenceFilename = provider === "openrouter" ? String(raw.voiceReferenceFilename || "").trim().slice(0, 160) : "";
   const language = sanitizeLanguage(raw.language, provider, voice);
@@ -1251,14 +1252,8 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
       input: text,
       voice: options.voice,
       ...(options.voiceReferenceAudio ? {
-        provider: {
-          options: {
-            mistral: {
-              ref_audio: options.voiceReferenceAudio,
-              ...(options.voiceReferenceFilename ? { ref_audio_filename: options.voiceReferenceFilename } : {})
-            }
-          }
-        }
+        ref_audio: options.voiceReferenceAudio,
+        ...(options.voiceReferenceFilename ? { ref_audio_filename: options.voiceReferenceFilename } : {})
       } : options.voiceId ? { voice_id: options.voiceId } : {}),
       response_format: getOpenRouterResponseFormat(options.model),
       speed: options.speed
