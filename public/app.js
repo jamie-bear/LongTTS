@@ -363,16 +363,25 @@ function applyProviderConfig() {
 }
 
 function syncSegmentSizeControl(config) {
+  const segmentConfig = getActiveSegmentConfig(config);
   for (const option of elements.segmentChars.options) {
-    option.disabled = Number(option.value) > config.maxSegmentChars;
+    option.disabled = Number(option.value) > segmentConfig.maxSegmentChars;
   }
 
-  const preferredValue = String(state.segmentCharsByProvider[state.provider] || config.defaultSegmentChars);
+  const preferredValue = String(state.segmentCharsByProvider[state.provider] || segmentConfig.defaultSegmentChars);
   const preferredOption = Array.from(elements.segmentChars.options)
     .find((option) => option.value === preferredValue && !option.disabled);
 
-  elements.segmentChars.value = preferredOption ? preferredValue : String(config.defaultSegmentChars);
+  elements.segmentChars.value = preferredOption ? preferredValue : String(segmentConfig.defaultSegmentChars);
   state.segmentCharsByProvider[state.provider] = Number(elements.segmentChars.value);
+}
+
+function getActiveSegmentConfig(config) {
+  if (state.provider === "openrouter" && isOpenRouterGeminiTtsModel(state.openrouterModel)) {
+    return { ...config, defaultSegmentChars: 500, maxSegmentChars: 4500 };
+  }
+
+  return config;
 }
 
 function sanitizeProvider(value) {
@@ -403,8 +412,13 @@ function handleOpenRouterModelChange() {
   state.openrouterModel = elements.openrouterModel.value;
   sessionStorage.setItem("openrouterModel", state.openrouterModel);
   populateSelect(elements.voice, getOpenRouterVoiceOptions(state.openrouterModel), "", PROVIDERS.openrouter.defaultVoice);
+  syncSegmentSizeControl(PROVIDERS.openrouter);
   elements.openrouterVoiceClonePanel.classList.toggle("is-hidden", state.provider !== "openrouter" || !isVoxtralModel(state.openrouterModel));
   if (isVoxtralModel(state.openrouterModel)) loadOpenRouterVoiceClones();
+}
+
+function isOpenRouterGeminiTtsModel(modelId) {
+  return /(^|[/:-])(?:google|gemini)(?:[/:-]|$)/i.test(String(modelId || ""));
 }
 
 function isVoxtralModel(modelId) {
@@ -472,6 +486,7 @@ async function loadOpenRouterModels() {
     const preferred = state.openrouterModels.some((model) => model.id === state.openrouterModel) ? state.openrouterModel : state.openrouterModels[0]?.id || "";
     elements.openrouterModel.value = preferred;
     state.openrouterModel = preferred;
+    syncSegmentSizeControl(PROVIDERS.openrouter);
     if (preferred) sessionStorage.setItem("openrouterModel", preferred);
     if (isVoxtralModel(preferred)) await loadOpenRouterVoiceClones(false);
     populateSelect(elements.voice, getOpenRouterVoiceOptions(preferred), "", PROVIDERS.openrouter.defaultVoice);
