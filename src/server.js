@@ -1115,12 +1115,12 @@ function sanitizeOptions(raw) {
   const voiceReferenceFilename = provider === "openrouter" ? String(raw.voiceReferenceFilename || "").trim().slice(0, 160) : "";
   const language = sanitizeLanguage(raw.language, provider, voice);
   const speed = clamp(Number(raw.speed || 1), 0.7, 1.5);
-  const defaultSegmentChars = getDefaultSegmentChars(provider);
-  const maxSegmentChars = provider === "google" ? GOOGLE_MAX_SEGMENT_CHARS : MAX_SEGMENT_CHARS;
-  const segmentChars = Math.round(clamp(Number(raw.segmentChars || defaultSegmentChars), MIN_SEGMENT_CHARS, maxSegmentChars));
   const optimizeStreamingLatency = raw.optimizeStreamingLatency ? 1 : 0;
   const textNormalization = provider === "xai" && Boolean(raw.textNormalization);
   const model = provider === "openrouter" ? String(raw.model || "").trim() : "";
+  const defaultSegmentChars = getDefaultSegmentChars(provider, model);
+  const maxSegmentChars = getMaxSegmentChars(provider, model);
+  const segmentChars = Math.round(clamp(Number(raw.segmentChars || defaultSegmentChars), MIN_SEGMENT_CHARS, maxSegmentChars));
   if (provider === "openrouter" && !model) {
     throw new Error("Select an OpenRouter speech model before starting narration.");
   }
@@ -1149,10 +1149,17 @@ function sanitizeBase64Audio(value) {
   return audio;
 }
 
-function getDefaultSegmentChars(provider) {
+function getDefaultSegmentChars(provider, model = "") {
   if (provider === "google") return GOOGLE_DEFAULT_SEGMENT_CHARS;
   if (provider === "gemini") return GEMINI_DEFAULT_SEGMENT_CHARS;
+  if (provider === "openrouter" && requiresOpenRouterPcm(model)) return GEMINI_DEFAULT_SEGMENT_CHARS;
   return DEFAULT_SEGMENT_CHARS;
+}
+
+function getMaxSegmentChars(provider, model = "") {
+  if (provider === "google") return GOOGLE_MAX_SEGMENT_CHARS;
+  if (provider === "openrouter" && requiresOpenRouterPcm(model)) return GOOGLE_MAX_SEGMENT_CHARS;
+  return MAX_SEGMENT_CHARS;
 }
 
 function sanitizeProvider(rawProvider) {
@@ -1249,7 +1256,7 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
     },
     body: JSON.stringify({
       model: options.model,
-      input: text,
+      input: requiresOpenRouterPcm(options.model) ? buildGeminiPrompt(text, options) : text,
       voice: options.voice,
       ...(options.voiceReferenceAudio ? {
         ref_audio: options.voiceReferenceAudio,
@@ -1266,7 +1273,8 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
     throw new Error(`OpenRouter TTS request failed: ${message}`);
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  const audio = Buffer.from(await response.arrayBuffer());
+  return requiresOpenRouterPcm(options.model) ? extractLinear16Pcm(audio) : audio;
 }
 
 async function readErrorResponse(response) {
