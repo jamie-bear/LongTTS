@@ -6,7 +6,7 @@ export function Button({ className = "", ...props }: ButtonHTMLAttributes<HTMLBu
 }
 
 export function SelectField({ id, label, options, helper, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { id: string; label: string; options: SelectOption[]; helper?: ReactNode }) {
-  return <label className="field" htmlFor={id}><span className="field-label">{label}</span><select id={id} {...props}>{options.map((option, index) => <option key={`${option.value}-${index}`} value={option.value} disabled={option.disabled}>{option.label}</option>)}</select>{helper && <small className="field-help">{helper}</small>}</label>;
+  return <div className="field"><label className="field-label" htmlFor={id}>{label}</label><select id={id} {...props}>{options.map((option, index) => <option key={`${option.value}-${index}`} value={option.value} disabled={option.disabled}>{option.label}</option>)}</select>{helper && <small className="field-help">{helper}</small>}</div>;
 }
 
 export function Checkbox({ id, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { id: string; label: ReactNode }) {

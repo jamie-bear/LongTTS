@@ -1,4 +1,5 @@
-import { createMpegBlob, createWavBlob, getLeadingId3v2Size, getTrailingId3v1Size } from "../../src/client/services/audioEngine";
+import { vi } from "vitest";
+import { AudioEngine, createMpegBlob, createWavBlob, getLeadingId3v2Size, getTrailingId3v1Size } from "../../src/client/services/audioEngine";
 
 describe("audio assembly", () => {
   it("creates a valid PCM WAV header", async () => {
@@ -17,6 +18,22 @@ describe("audio assembly", () => {
     const blob = createMpegBlob([[new Uint8Array([5, 6]).buffer], [tagged.buffer]]);
     expect(blob.type).toBe("audio/mpeg");
     expect(blob.size).toBe(6);
+  });
+
+  it("creates a stitched snapshot from an unfinished active segment", async () => {
+    const audio = document.createElement("audio");
+    audio.load = vi.fn();
+    audio.play = vi.fn(async () => undefined);
+    const onAudioAvailable = vi.fn();
+    const engine = new AudioEngine(audio, { onStatus: vi.fn(), onBufferChange: vi.fn(), onLevel: vi.fn(), onAudioAvailable });
+    engine.reset("pcm_s16le");
+    engine.beginSegment(1);
+    engine.push(new Uint8Array([1, 2, 3, 4]).buffer);
+    const partial = engine.snapshot();
+    expect(onAudioAvailable).toHaveBeenCalledOnce();
+    expect(partial?.extension).toBe("wav");
+    expect(partial?.blob.size).toBe(48);
+    engine.dispose();
   });
 });
 

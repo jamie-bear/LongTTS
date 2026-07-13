@@ -35,7 +35,10 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
   useEffect(() => {
     if (!audioRef.current) return;
     audioEngineRef.current = new AudioEngine(audioRef.current, {
-      onStatus: setStatus,
+      onStatus: (message) => {
+        const phase = stateRef.current.phase;
+        if (phase !== "completed" && phase !== "stopped" && phase !== "error") setStatus(message);
+      },
       onBufferChange: (bufferSeconds) => dispatch({ type: "patch", patch: { bufferSeconds } }),
       onLevel: () => dispatch({ type: "patch", patch: { waveformLevel: performance.now() } }),
       onAudioAvailable: () => dispatch({ type: "patch", patch: { audioAvailable: true } })
@@ -89,7 +92,8 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
           const preferred = models.some((model) => model.id === current.openrouterModel) ? current.openrouterModel : models[0]?.id || "";
           if (preferred) sessionStorage.setItem(STORAGE_KEYS.openrouterModel, preferred);
           const options = voiceMap[preferred] || [];
-          dispatch({ type: "patch", patch: { openrouterModels: models, openrouterVoiceOptions: voiceMap, openrouterModel: preferred, voice: options[0]?.value || "" } });
+          const limits = activeSegmentLimits("openrouter", preferred);
+          dispatch({ type: "patch", patch: { openrouterModels: models, openrouterVoiceOptions: voiceMap, openrouterModel: preferred, voice: options[0]?.value || "", segmentChars: limits.defaultSegmentChars } });
           setStatus(models.length ? `Loaded ${models.length.toLocaleString()} OpenRouter speech models.` : "No OpenRouter speech models were returned.");
         } else if (current.provider === "resemble") {
           if (!key) { dispatch({ type: "patch", patch: { resembleVoices: [], voice: "" } }); return; }

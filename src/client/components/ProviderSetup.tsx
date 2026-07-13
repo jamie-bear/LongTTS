@@ -10,10 +10,10 @@ export function ProviderSetup({ controller }: { controller: Controller }) {
   const { state, providerConfig, actions } = controller;
   const usesKey = providerConfig.authMode === "api-key";
   return <div className="provider-setup">
-    <label className="field" htmlFor="provider"><span className="field-label">Provider</span>
+    <div className="field"><label className="field-label" htmlFor="provider">Provider</label>
       <select id="provider" value={state.provider} onChange={(event) => actions.selectProvider(event.target.value as keyof typeof PROVIDERS)}>
         {PROVIDER_ORDER.map((id) => <option key={id} value={id}>{PROVIDERS[id].label}</option>)}
-      </select></label>
+      </select></div>
       {usesKey && <div className="credential-block">
         <label id="apiKeyLabel" className="field" htmlFor="apiKey"><span className="field-label">{providerConfig.credentialLabel}</span>
         <input id="apiKey" type="password" autoComplete="off" placeholder={providerConfig.credentialPlaceholder} value={state.credentials[state.provider]} onChange={(event) => actions.setCredential(event.target.value)} />

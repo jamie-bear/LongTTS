@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { isOpenRouterPcmModel, SEGMENT_OPTIONS } from "../config/providers";
 import type { useLongTtsController } from "../hooks/useLongTtsController";
 import { ProviderSetup } from "./ProviderSetup";
@@ -15,7 +15,7 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
   const partial = state.audioAvailable && state.phase !== "completed";
   return <aside className="control-panel" aria-label="Narration controls">
     <section className="card setup-card" aria-labelledby="provider-heading">
-      <div className="compact-heading"><div className="heading-icon"><Icon name="key" /></div><div><p className="eyebrow">Connection</p><h2 id="provider-heading">Provider</h2></div></div>
+      <div className="compact-heading"><div className="heading-icon"><Icon name="key" /></div><div><p className="eyebrow">Connection</p><h2 id="provider-heading">Provider & access</h2></div></div>
       <ProviderSetup controller={controller} />
     </section>
 
@@ -47,6 +47,6 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
   </aside>;
 }
 
-function Capability({ available, unavailableText, children }: { available: boolean; unavailableText: string; children: React.ReactNode }) {
+function Capability({ available, unavailableText, children }: { available: boolean; unavailableText: string; children: ReactNode }) {
   return <div className={`capability ${available ? "" : "is-unavailable"}`}>{children}{!available && <div className="capability-note"><span className="availability-badge">Unavailable</span><small>{unavailableText}</small></div>}</div>;
 }

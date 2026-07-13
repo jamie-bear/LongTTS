@@ -1,8 +1,8 @@
-import type { SVGProps } from "react";
+import type { ReactElement, SVGProps } from "react";
 
 export type IconName = "audio" | "check" | "download" | "file" | "key" | "pause" | "play" | "refresh" | "settings" | "spark" | "stop" | "trash" | "user";
 
-const paths: Record<IconName, JSX.Element> = {
+const paths: Record<IconName, ReactElement> = {
   audio: <><path d="M4 10v4" /><path d="M8 7v10" /><path d="M12 4v16" /><path d="M16 8v8" /><path d="M20 10v4" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
