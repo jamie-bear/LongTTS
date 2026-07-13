@@ -24,6 +24,8 @@ const RESEMBLE_SYNTHESIS_URL = "https://f.cluster.resemble.ai/synthesize";
 const RESEMBLE_SAMPLE_RATE = 22_050;
 const MINIMAX_FILE_UPLOAD_URL = "https://api.minimax.io/v1/files/upload";
 const MINIMAX_VOICE_CLONE_URL = "https://api.minimax.io/v1/voice_clone";
+const MINIMAX_GET_VOICE_URL = "https://api.minimax.io/v1/get_voice";
+const MINIMAX_DELETE_VOICE_URL = "https://api.minimax.io/v1/delete_voice";
 const MINIMAX_TTS_URL = "https://api.minimax.io/v1/t2a_v2";
 const MINIMAX_SAMPLE_RATE = 24_000;
 const MINIMAX_REQUEST_TIMEOUT_MS = 45_000;
@@ -121,8 +123,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (url.pathname === "/api/minimax/voices/create") {
-      await handleMinimaxVoiceCreate(req, res);
+    if (url.pathname.startsWith("/api/minimax/voices")) {
+      await handleMinimaxVoices(req, res, url.pathname);
       return;
     }
 
@@ -416,7 +418,7 @@ async function readJsonRequest(req, limitBytes) {
 
 
 
-async function handleMinimaxVoiceCreate(req, res) {
+async function handleMinimaxVoices(req, res, pathname) {
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json; charset=utf-8", Allow: "POST" });
     res.end(JSON.stringify({ error: "Method not allowed" }));
@@ -425,7 +427,7 @@ async function handleMinimaxVoiceCreate(req, res) {
 
   let body;
   try {
-    body = await readJsonRequest(req, 48 * 1024 * 1024);
+    body = await readJsonRequest(req, pathname === "/api/minimax/voices/create" ? 48 * 1024 * 1024 : 16_384);
   } catch (error) {
     sendJson(res, 400, { error: error.message });
     return;
@@ -437,6 +439,47 @@ async function handleMinimaxVoiceCreate(req, res) {
     return;
   }
 
+  try {
+    if (pathname === "/api/minimax/voices") {
+      const parsed = await requestMiniMaxJson(MINIMAX_GET_VOICE_URL, { apiKey, method: "POST", payload: { voice_type: "voice_cloning" } });
+      sendJson(res, 200, { voices: normalizeMiniMaxVoices(parsed?.voice_cloning) });
+      return;
+    }
+
+    if (pathname === "/api/minimax/voices/delete") {
+      const voiceId = sanitizeVoiceId(body.voiceId);
+      await requestMiniMaxJson(MINIMAX_DELETE_VOICE_URL, {
+        apiKey,
+        method: "POST",
+        payload: { voice_type: "voice_cloning", voice_id: voiceId }
+      });
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (pathname === "/api/minimax/voices/create") {
+      await createMinimaxVoiceClone(res, body, apiKey);
+      return;
+    }
+
+    sendJson(res, 404, { error: "Unknown MiniMax voice endpoint." });
+  } catch (error) {
+    sendJson(res, 502, { error: `MiniMax voice request failed: ${error.message}` });
+  }
+}
+
+function normalizeMiniMaxVoices(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((voice) => ({
+      id: String(voice?.voice_id || voice?.id || ""),
+      name: String(voice?.voice_name || voice?.name || voice?.voice_id || voice?.id || ""),
+      createdAt: String(voice?.created_time || ""),
+      updatedAt: String(voice?.created_time || "")
+    }))
+    .filter((voice) => voice.id);
+}
+
+async function createMinimaxVoiceClone(res, body, apiKey) {
   try {
     const name = String(body.name || "").trim();
     const voiceId = createMiniMaxVoiceId(name);

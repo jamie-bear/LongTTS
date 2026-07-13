@@ -518,17 +518,35 @@ function handleMinimaxModelChange() {
 
 async function loadMinimaxVoices(updateSelect = true) {
   if (state.provider !== "minimax") return;
-  state.minimaxVoices = readStoredMinimaxVoiceClones();
+  const localVoices = readStoredMinimaxVoiceClones();
+  const apiKey = elements.apiKey.value.trim();
+  let remoteVoices = [];
+  if (apiKey) {
+    try {
+      const response = await fetch("/api/minimax/voices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey })
+      });
+      const body = await readJsonResponse(response);
+      if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+      remoteVoices = Array.isArray(body.voices) ? body.voices : [];
+    } catch (error) {
+      setStatus(`MiniMax voice refresh failed: ${error.message}`);
+    }
+  }
+  state.minimaxVoices = mergeMinimaxVoiceClones(localVoices, remoteVoices);
+  writeStoredMinimaxVoiceClones(state.minimaxVoices);
   if (updateSelect) populateSelect(elements.voice, getMinimaxVoiceOptions(), elements.voice.value, state.minimaxVoices[0]?.id || "");
   syncMinimaxVoiceCloneFormToSelection();
-  elements.minimaxVoiceCloneHint.textContent = `Loaded ${state.minimaxVoices.length.toLocaleString()} MiniMax voice clone${state.minimaxVoices.length === 1 ? "" : "s"}.`;
+  const sourceLabel = apiKey ? "available" : "locally saved";
+  elements.minimaxVoiceCloneHint.textContent = `Loaded ${state.minimaxVoices.length.toLocaleString()} ${sourceLabel} MiniMax voice clone${state.minimaxVoices.length === 1 ? "" : "s"}.`;
 }
 
 async function saveMinimaxVoiceClone() {
   const apiKey = elements.apiKey.value.trim();
   const [sourceFile] = elements.minimaxVoiceCloneAudio.files;
   const [promptFile] = elements.minimaxVoiceClonePromptAudio.files;
-  const selectedVoiceId = elements.voice.value || "";
   const name = elements.minimaxVoiceCloneName.value.trim();
   if (!apiKey) return setStatus("Add your MiniMax API key before creating voice clones.");
   if (!name) return setStatus("Name the MiniMax voice clone first.");
@@ -561,7 +579,7 @@ async function saveMinimaxVoiceClone() {
     const body = await readJsonResponse(response);
     if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
     const voice = body.voice;
-    state.minimaxVoices = [voice, ...state.minimaxVoices.filter((item) => item.id !== voice.id && item.id !== selectedVoiceId)];
+    state.minimaxVoices = [voice, ...state.minimaxVoices.filter((item) => item.id !== voice.id)];
     writeStoredMinimaxVoiceClones(state.minimaxVoices);
     elements.minimaxVoiceCloneAudio.value = "";
     elements.minimaxVoiceClonePromptAudio.value = "";
@@ -578,17 +596,47 @@ async function saveMinimaxVoiceClone() {
 
 async function deleteSelectedMinimaxVoiceClone() {
   const voiceId = elements.voice.value;
-  if (!voiceId) return setStatus("Select a MiniMax voice clone to remove locally.");
-  state.minimaxVoices = state.minimaxVoices.filter((voice) => voice.id !== voiceId);
-  writeStoredMinimaxVoiceClones(state.minimaxVoices);
-  await loadMinimaxVoices();
-  setStatus("MiniMax voice clone removed from this browser.");
+  if (!voiceId) return setStatus("Select a MiniMax voice clone to delete.");
+  const apiKey = elements.apiKey.value.trim();
+  if (!apiKey) return setStatus("Add your MiniMax API key before deleting a MiniMax voice clone.");
+  elements.deleteMinimaxVoiceCloneButton.disabled = true;
+  try {
+    const response = await fetch("/api/minimax/voices/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey, voiceId })
+    });
+    const body = await readJsonResponse(response);
+    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+    state.minimaxVoices = state.minimaxVoices.filter((voice) => voice.id !== voiceId);
+    writeStoredMinimaxVoiceClones(state.minimaxVoices);
+    await loadMinimaxVoices();
+    setStatus("MiniMax voice clone deleted.");
+  } catch (error) {
+    setStatus(`MiniMax voice clone delete failed: ${error.message}`);
+  } finally {
+    elements.deleteMinimaxVoiceCloneButton.disabled = false;
+  }
 }
 
 function syncMinimaxVoiceCloneFormToSelection() {
   const voice = state.minimaxVoices.find((item) => item.id === elements.voice.value);
   elements.minimaxVoiceCloneName.value = voice?.name || "";
-  elements.saveMinimaxVoiceCloneButton.textContent = voice ? "Create replacement clone" : "Create voice clone";
+  elements.deleteMinimaxVoiceCloneButton.disabled = !voice;
+  elements.saveMinimaxVoiceCloneButton.textContent = "Create voice clone";
+}
+
+function mergeMinimaxVoiceClones(localVoices, remoteVoices) {
+  const merged = new Map();
+  for (const voice of localVoices) {
+    if (voice?.id) merged.set(voice.id, voice);
+  }
+  for (const voice of remoteVoices) {
+    if (!voice?.id) continue;
+    const local = merged.get(voice.id) || {};
+    merged.set(voice.id, { ...voice, ...local, name: local.name || voice.name || voice.id });
+  }
+  return [...merged.values()];
 }
 
 function readStoredMinimaxVoiceClones() {
