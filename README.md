@@ -1,6 +1,8 @@
 # LongTTS
 
-A local audiobook web app for turning long-form text into narration through OpenRouter speech models, Gemini TTS, xAI streaming TTS, Google Cloud Text-to-Speech voices, or Resemble.ai custom voices.
+A local audiobook web app for turning long-form text into narration through OpenRouter speech models, Gemini TTS, xAI streaming TTS, Google Cloud Text-to-Speech voices, MiniMax custom voices, or Resemble.ai custom voices.
+
+The frontend uses React, TypeScript, and Vite. Provider configuration, persistence, REST/OAuth access, WebSocket narration, audio playback/assembly, and presentation are separated so the interface can be redesigned without changing synthesis behavior.
 
 ## Features
 
@@ -39,13 +41,44 @@ The default container and host port is `10203`. To change it, update `PORT` and 
 
 ## Local Node Fallback
 
-Docker Compose is the primary path, but the app can still run directly:
+Install dependencies and build the frontend before starting the production server:
 
 ```bash
-node src/server.js
+npm install
+npm run build
+npm start
 ```
 
-Direct Node runs also default to `http://localhost:10203`.
+Production runs at `http://localhost:10203`.
+
+For frontend development with hot reload:
+
+```bash
+npm install
+npm run dev
+```
+
+Vite remains at `http://localhost:10203` and proxies API, OAuth, and narration WebSocket traffic to the local Node backend on port `10204`.
+
+## Frontend Quality Checks
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run test:e2e
+npm run build
+```
+
+Unit tests use credential-free browser mocks. Playwright covers every provider at desktop and mobile sizes, mocked WebSocket narration, horizontal overflow, and committed visual-regression baselines. No provider credentials are required.
+
+Frontend source is organized under `src/client`:
+
+- `components` contains the current visual shell and reusable controls.
+- `config` is the single source of truth for provider capabilities and options.
+- `state` and `hooks` own reducer-driven application behavior.
+- `services` isolate storage, REST/OAuth, WebSocket, playback, and download logic.
+- `styles` exposes semantic tokens while retaining the current presentation.
 
 ## Google OAuth Setup
 

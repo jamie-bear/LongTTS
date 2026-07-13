@@ -1,0 +1,338 @@
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { activeSegmentLimits, isOpenRouterPcmModel, isVoxtralModel, PROVIDERS } from "../config/providers";
+import { api, fileToBase64 } from "../services/apiClient";
+import { AudioEngine } from "../services/audioEngine";
+import { NarrationSession } from "../services/narrationSession";
+import { STORAGE_KEYS, writeCredential, writeVoiceClones } from "../services/storage";
+import { appReducer, createInitialState } from "../state/appState";
+import type { NarrationOptions, ProviderId, SelectOption, ServerEvent, VoiceClone } from "../types/contracts";
+
+const MAX_OPENROUTER_SAMPLE_BYTES = 4 * 1024 * 1024;
+const MAX_MINIMAX_SAMPLE_BYTES = 20 * 1024 * 1024;
+
+export const SAMPLE_TEXT = `Chapter One
+
+The morning train crossed the valley just as the clouds began to lift from the river. Mara watched the light spill across the windows and tried to remember the sentence she had written before sleep took her. It had been a good sentence, she was sure of that, the sort that opened a door in the mind and made the next page feel inevitable.
+
+She found the notebook in her coat pocket. Between two pages was a ticket, folded once, with a station name she did not recognize. When the conductor passed, he paused beside her seat and smiled as if they had spoken many times before.
+
+"You will want the north platform when we arrive," he said.
+
+Mara looked down at the ticket again. The ink was fresh. Under the station name, in a careful hand, someone had written: Bring the whole story.`;
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement | null>) {
+  const [state, dispatch] = useReducer(appReducer, undefined, createInitialState);
+  const stateRef = useRef(state);
+  const audioEngineRef = useRef<AudioEngine | null>(null);
+  const sessionRef = useRef<NarrationSession | null>(null);
+  const discoveryAbortRef = useRef<AbortController | null>(null);
+  stateRef.current = state;
+
+  const setStatus = useCallback((status: string) => dispatch({ type: "patch", patch: { status } }), []);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioEngineRef.current = new AudioEngine(audioRef.current, {
+      onStatus: setStatus,
+      onBufferChange: (bufferSeconds) => dispatch({ type: "patch", patch: { bufferSeconds } }),
+      onLevel: () => dispatch({ type: "patch", patch: { waveformLevel: performance.now() } })
+    });
+    return () => {
+      sessionRef.current?.dispose();
+      audioEngineRef.current?.dispose();
+    };
+  }, [audioRef, setStatus]);
+
+  const refreshGoogle = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const googleOAuth = await api.googleStatus(signal);
+      dispatch({ type: "patch", patch: { googleOAuth } });
+      return googleOAuth;
+    } catch (error) {
+      const googleOAuth = { configured: false, connected: false, error: errorMessage(error) };
+      dispatch({ type: "patch", patch: { googleOAuth } });
+      return googleOAuth;
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshGoogle(controller.signal);
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.data?.type !== "google-oauth") return;
+      if (event.data.ok) void refreshGoogle();
+      else setStatus(event.data.message || "Google OAuth failed.");
+    };
+    window.addEventListener("message", handleMessage);
+    return () => { controller.abort(); window.removeEventListener("message", handleMessage); };
+  }, [refreshGoogle, setStatus]);
+
+  useEffect(() => {
+    discoveryAbortRef.current?.abort();
+    const controller = new AbortController();
+    discoveryAbortRef.current = controller;
+    const timer = window.setTimeout(async () => {
+      const current = stateRef.current;
+      const key = current.credentials[current.provider].trim();
+      try {
+        if (current.provider === "openrouter") {
+          if (!key) {
+            dispatch({ type: "patch", patch: { openrouterModels: [], openrouterVoiceOptions: {}, openrouterModel: "", voice: "" } });
+            return;
+          }
+          const { models } = await api.openRouterModels(key, controller.signal);
+          if (controller.signal.aborted || stateRef.current.provider !== "openrouter") return;
+          const voiceMap = Object.fromEntries(models.map((model) => [model.id, model.voices || []]));
+          const preferred = models.some((model) => model.id === current.openrouterModel) ? current.openrouterModel : models[0]?.id || "";
+          if (preferred) sessionStorage.setItem(STORAGE_KEYS.openrouterModel, preferred);
+          const options = voiceMap[preferred] || [];
+          dispatch({ type: "patch", patch: { openrouterModels: models, openrouterVoiceOptions: voiceMap, openrouterModel: preferred, voice: options[0]?.value || "" } });
+          setStatus(models.length ? `Loaded ${models.length.toLocaleString()} OpenRouter speech models.` : "No OpenRouter speech models were returned.");
+        } else if (current.provider === "resemble") {
+          if (!key) { dispatch({ type: "patch", patch: { resembleVoices: [], voice: "" } }); return; }
+          const { voices } = await api.resembleVoices(key, controller.signal);
+          if (controller.signal.aborted || stateRef.current.provider !== "resemble") return;
+          dispatch({ type: "patch", patch: { resembleVoices: voices, voice: voices[0]?.id || "" } });
+          setStatus(voices.length ? `Loaded ${voices.length.toLocaleString()} Resemble.ai custom voice${voices.length === 1 ? "" : "s"}.` : "No ready Resemble.ai custom voices were returned for this key.");
+        } else if (current.provider === "minimax") {
+          let remote: VoiceClone[] = [];
+          if (key) remote = (await api.minimaxVoices(key, controller.signal)).voices || [];
+          if (controller.signal.aborted || stateRef.current.provider !== "minimax") return;
+          const merged = mergeVoices(current.minimaxVoices, remote);
+          writeVoiceClones("minimaxVoiceClones", merged);
+          dispatch({ type: "patch", patch: { minimaxVoices: merged, voice: current.voice || merged[0]?.id || "" } });
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setStatus(`${PROVIDERS[current.provider].label} discovery failed: ${errorMessage(error)}`);
+      }
+    }, state.credentials[state.provider] ? 450 : 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [state.provider, state.credentials, setStatus]);
+
+  const providerConfig = PROVIDERS[state.provider];
+  const openrouterBaseVoices = state.openrouterVoiceOptions[state.openrouterModel] || providerConfig.voices;
+  const voiceOptions = useMemo<SelectOption[]>(() => {
+    if (state.provider === "resemble") return state.resembleVoices.length ? state.resembleVoices.map((voice) => ({ value: voice.id, label: voice.languages?.[0] ? `${voice.name} (${voice.languages[0]})` : voice.name })) : providerConfig.voices;
+    if (state.provider === "minimax") return state.minimaxVoices.length ? state.minimaxVoices.map((voice) => ({ value: voice.id, label: voice.model ? `${voice.name} (${voice.model})` : voice.name })) : providerConfig.voices;
+    if (state.provider === "openrouter" && isVoxtralModel(state.openrouterModel)) {
+      const clones = state.openrouterClones.map((voice) => ({ value: `voice_id:${voice.id}`, label: `Clone: ${voice.name}${voice.languages?.length ? ` (${voice.languages.join(", ")})` : ""}` }));
+      return clones.length ? [...openrouterBaseVoices, ...clones] : openrouterBaseVoices;
+    }
+    return state.provider === "openrouter" ? openrouterBaseVoices : providerConfig.voices;
+  }, [openrouterBaseVoices, providerConfig.voices, state.minimaxVoices, state.openrouterClones, state.openrouterModel, state.provider, state.resembleVoices]);
+
+  const selectProvider = useCallback((provider: ProviderId) => {
+    sessionStorage.setItem(STORAGE_KEYS.provider, provider);
+    dispatch({ type: "provider", provider });
+  }, []);
+
+  const setCredential = useCallback((value: string) => {
+    const current = stateRef.current;
+    dispatch({ type: "credential", provider: current.provider, value });
+    writeCredential(current.provider, value, current.rememberCredential[current.provider]);
+  }, []);
+
+  const setRememberCredential = useCallback((value: boolean) => {
+    const current = stateRef.current;
+    dispatch({ type: "remember", provider: current.provider, value });
+    writeCredential(current.provider, current.credentials[current.provider], value);
+  }, []);
+
+  const selectOpenRouterModel = useCallback((model: string) => {
+    sessionStorage.setItem(STORAGE_KEYS.openrouterModel, model);
+    const limits = activeSegmentLimits("openrouter", model);
+    const options = stateRef.current.openrouterVoiceOptions[model] || [];
+    dispatch({ type: "patch", patch: { openrouterModel: model, voice: options[0]?.value || "", segmentChars: limits.defaultSegmentChars } });
+  }, []);
+
+  const setMinimaxModel = useCallback((model: string) => {
+    sessionStorage.setItem(STORAGE_KEYS.minimaxModel, model);
+    dispatch({ type: "patch", patch: { minimaxModel: model } });
+  }, []);
+
+  const saveOpenRouterClone = useCallback(async (values: { name: string; languages: string; gender: string; file?: File }) => {
+    const current = stateRef.current;
+    const key = current.credentials.openrouter.trim();
+    if (!key) return setStatus("Add your OpenRouter API key before managing Voxtral voice clones.");
+    if (!values.name.trim()) return setStatus("Name the voice clone first.");
+    const selectedId = current.voice.startsWith("voice_id:") ? current.voice.slice(9) : "";
+    const existing = current.openrouterClones.find((voice) => voice.id === selectedId);
+    if (!existing && !values.file) return setStatus("Choose reference audio to create a voice clone.");
+    if (values.file && values.file.size > MAX_OPENROUTER_SAMPLE_BYTES) return setStatus("Reference audio must be 4 MB or smaller for local saved clones.");
+    dispatch({ type: "patch", patch: { operationBusy: true } });
+    try {
+      const fallbackVoice = (current.openrouterVoiceOptions[current.openrouterModel] || []).find((option) => option.value && !option.disabled)?.value || "alloy";
+      const clone: VoiceClone = {
+        id: selectedId || `local-${Date.now()}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`,
+        name: values.name.trim(), languages: values.languages.split(",").map((item) => item.trim()).filter(Boolean), gender: values.gender,
+        sampleAudio: values.file ? await fileToBase64(values.file) : existing?.sampleAudio || "",
+        sampleFilename: values.file?.name || existing?.sampleFilename || "sample.wav", baseVoice: existing?.baseVoice || fallbackVoice
+      };
+      const clones = [clone, ...current.openrouterClones.filter((voice) => voice.id !== clone.id)];
+      writeVoiceClones("openrouterVoiceClones", clones);
+      dispatch({ type: "patch", patch: { openrouterClones: clones, voice: `voice_id:${clone.id}`, status: selectedId ? "Voice clone updated locally." : "Voice clone saved locally." } });
+    } catch (error) { setStatus(`Voice clone save failed: ${errorMessage(error)}`); }
+    finally { dispatch({ type: "patch", patch: { operationBusy: false } }); }
+  }, [setStatus]);
+
+  const deleteOpenRouterClone = useCallback(() => {
+    const current = stateRef.current;
+    const voiceId = current.voice.startsWith("voice_id:") ? current.voice.slice(9) : "";
+    if (!voiceId) return setStatus("Select a saved voice clone to delete.");
+    const clones = current.openrouterClones.filter((voice) => voice.id !== voiceId);
+    writeVoiceClones("openrouterVoiceClones", clones);
+    dispatch({ type: "patch", patch: { openrouterClones: clones, voice: "alloy", status: "Voice clone deleted locally." } });
+  }, [setStatus]);
+
+  const saveMinimaxClone = useCallback(async (values: { name: string; previewText: string; languageModel: string; promptText: string; validationText: string; source?: File; prompt?: File }) => {
+    const current = stateRef.current;
+    const apiKey = current.credentials.minimax.trim();
+    if (!apiKey) return setStatus("Add your MiniMax API key before creating voice clones.");
+    if (!values.name.trim()) return setStatus("Name the MiniMax voice clone first.");
+    if (!values.source) return setStatus("Choose source audio to create a MiniMax voice clone.");
+    if (values.source.size > MAX_MINIMAX_SAMPLE_BYTES || (values.prompt && values.prompt.size > MAX_MINIMAX_SAMPLE_BYTES)) return setStatus("MiniMax voice clone audio files must be 20 MB or smaller.");
+    if ((values.prompt && !values.promptText.trim()) || (!values.prompt && values.promptText.trim())) return setStatus("MiniMax prompt audio and prompt text must be provided together.");
+    dispatch({ type: "patch", patch: { operationBusy: true } });
+    try {
+      const payload = {
+        apiKey, name: values.name.trim(), model: current.minimaxModel, previewText: values.previewText.trim(),
+        promptText: values.promptText.trim(), validationText: values.validationText.trim(), languageModel: values.languageModel,
+        sourceAudio: await fileToBase64(values.source), sourceFilename: values.source.name,
+        sourceContentType: values.source.type || "application/octet-stream", promptAudio: values.prompt ? await fileToBase64(values.prompt) : "",
+        promptFilename: values.prompt?.name || "", promptContentType: values.prompt?.type || "application/octet-stream"
+      };
+      const { voice } = await api.createMinimaxVoice(payload);
+      const voices = [voice, ...current.minimaxVoices.filter((item) => item.id !== voice.id)];
+      writeVoiceClones("minimaxVoiceClones", voices);
+      dispatch({ type: "patch", patch: { minimaxVoices: voices, voice: voice.id, status: `MiniMax voice clone created: ${voice.name}.` } });
+    } catch (error) { setStatus(`MiniMax voice clone failed: ${errorMessage(error)}`); }
+    finally { dispatch({ type: "patch", patch: { operationBusy: false } }); }
+  }, [setStatus]);
+
+  const deleteMinimaxClone = useCallback(async () => {
+    const current = stateRef.current;
+    if (!current.voice) return setStatus("Select a MiniMax voice clone to delete.");
+    const apiKey = current.credentials.minimax.trim();
+    if (!apiKey) return setStatus("Add your MiniMax API key before deleting a MiniMax voice clone.");
+    dispatch({ type: "patch", patch: { operationBusy: true } });
+    try {
+      await api.deleteMinimaxVoice(apiKey, current.voice);
+      const voices = current.minimaxVoices.filter((voice) => voice.id !== current.voice);
+      writeVoiceClones("minimaxVoiceClones", voices);
+      dispatch({ type: "patch", patch: { minimaxVoices: voices, voice: voices[0]?.id || "", status: "MiniMax voice clone deleted." } });
+    } catch (error) { setStatus(`MiniMax voice clone delete failed: ${errorMessage(error)}`); }
+    finally { dispatch({ type: "patch", patch: { operationBusy: false } }); }
+  }, [setStatus]);
+
+  const handleServerEvent = useCallback((event: ServerEvent) => {
+    if (event.type === "meta") {
+      audioEngineRef.current?.configure(event.audioEncoding, event.sampleRate, event.channels);
+      dispatch({ type: "patch", patch: { totalSegments: event.totalSegments, currentSegment: 0, progress: 0, status: `Prepared ${event.totalSegments} streaming segments.` } });
+    } else if (event.type === "status" || event.type === "waiting") setStatus(event.message);
+    else if (event.type === "segment") {
+      audioEngineRef.current?.beginSegment(event.index);
+      dispatch({ type: "patch", patch: { phase: "generating", currentSegment: event.index, totalSegments: event.totalSegments, progress: ((event.index - 1) / event.totalSegments) * 100, status: `Generating segment ${event.index}...` } });
+    } else if (event.type === "segmentDone") {
+      audioEngineRef.current?.finishSegment(event.index);
+      dispatch({ type: "patch", patch: { currentSegment: event.index, totalSegments: event.totalSegments, progress: (event.index / event.totalSegments) * 100, status: `Buffered segment ${event.index}.` } });
+    } else if (event.type === "complete") {
+      const stitchedAudio = audioEngineRef.current?.complete() || null;
+      dispatch({ type: "patch", patch: { phase: "completed", progress: 100, stitchedAudio, status: stitchedAudio ? `Narration fully generated. Continuous ${stitchedAudio.extension.toUpperCase()} ready.` : "Narration fully generated, but no audio was received." } });
+    } else if (event.type === "cancelled") {
+      dispatch({ type: "patch", patch: { phase: "stopped", status: event.message || "Cancelled." } });
+    } else if (event.type === "error") {
+      dispatch({ type: "patch", patch: { phase: "error", status: event.message || "Narration failed." } });
+    }
+  }, [setStatus]);
+
+  const startNarration = useCallback(async () => {
+    const current = stateRef.current;
+    let googleOAuth = current.googleOAuth;
+    if (current.provider === "google") googleOAuth = await refreshGoogle();
+    const apiKey = current.credentials[current.provider].trim();
+    if (!apiKey && !(current.provider === "google" && googleOAuth.connected)) return setStatus(current.provider === "google" ? "Connect Google before starting narration." : `Add your ${PROVIDERS[current.provider].credentialLabel}.`);
+    if (!current.text.trim()) return setStatus("Paste text or load a .txt file.");
+    if (current.provider === "openrouter" && !current.openrouterModel) return setStatus("Select an OpenRouter speech model before starting narration.");
+    if ((current.provider === "resemble" || current.provider === "minimax") && !current.voice) return setStatus(`Select a ${PROVIDERS[current.provider].label} voice before starting narration.`);
+    writeCredential(current.provider, apiKey, current.rememberCredential[current.provider]);
+    const selectedClone = current.voice.startsWith("voice_id:") ? current.openrouterClones.find((voice) => voice.id === current.voice.slice(9)) : undefined;
+    const options: NarrationOptions = {
+      provider: current.provider, voice: selectedClone?.baseVoice || current.voice, language: current.language, speed: current.speed,
+      segmentChars: current.segmentChars, optimizeStreamingLatency: current.lowLatency, textNormalization: current.textNormalization,
+      model: current.provider === "openrouter" ? current.openrouterModel : current.provider === "minimax" ? current.minimaxModel : "",
+      voiceId: selectedClone?.id || "", voiceReferenceAudio: selectedClone?.sampleAudio || "", voiceReferenceFilename: selectedClone?.sampleFilename || ""
+    };
+    const initialPcm = current.provider === "gemini" || current.provider === "google" || current.provider === "resemble" || (current.provider === "openrouter" && isOpenRouterPcmModel(current.openrouterModel));
+    audioEngineRef.current?.reset(initialPcm ? "pcm_s16le" : "mpeg");
+    dispatch({ type: "patch", patch: { phase: "connecting", status: "Opening local narration stream...", progress: 0, currentSegment: 0, totalSegments: 0, stitchedAudio: null } });
+    const session = new NarrationSession({
+      onOpen: () => setStatus("Narration stream connected."), onEvent: handleServerEvent,
+      onAudio: (chunk) => audioEngineRef.current?.push(chunk),
+      onClose: () => {
+        const phase = stateRef.current.phase;
+        if (phase === "connecting" || phase === "generating") dispatch({ type: "patch", patch: { phase: "error", status: "Narration stream closed unexpectedly." } });
+      },
+      onError: (message) => dispatch({ type: "patch", patch: { phase: "error", status: message } })
+    });
+    sessionRef.current = session;
+    session.start({ type: "start", apiKey, text: current.text.trim(), options }, () => ({ paused: audioRef.current?.paused ?? true, bufferedAheadSeconds: audioEngineRef.current?.bufferedAheadSeconds() ?? 0 }));
+  }, [audioRef, handleServerEvent, refreshGoogle, setStatus]);
+
+  const stopNarration = useCallback(() => {
+    sessionRef.current?.cancel();
+    audioEngineRef.current?.stop();
+    dispatch({ type: "patch", patch: { phase: "stopped", status: "Stopped." } });
+  }, []);
+
+  const disconnectGoogle = useCallback(async () => {
+    try { dispatch({ type: "patch", patch: { googleOAuth: await api.disconnectGoogle(), status: "Google disconnected." } }); }
+    catch (error) { setStatus(`Google disconnect failed: ${errorMessage(error)}`); }
+  }, [setStatus]);
+
+  const connectGoogle = useCallback(() => {
+    const popup = window.open("/auth/google/start", "longtts-google-oauth", "popup=yes,width=560,height=720");
+    if (!popup) setStatus("Allow popups to connect Google.");
+  }, [setStatus]);
+
+  const download = useCallback(() => {
+    const current = stateRef.current;
+    if (current.stitchedAudio) audioEngineRef.current?.download(current.stitchedAudio, current.provider);
+  }, []);
+
+  const stats = useMemo(() => {
+    const chars = state.text.length;
+    const price = providerConfig.costPerMillionChars;
+    return { chars, cost: price ? `$${((chars / 1_000_000) * price).toFixed(3)} estimated` : `${providerConfig.label.split(":")[0]} pricing varies by model` };
+  }, [providerConfig, state.text.length]);
+
+  return {
+    state, providerConfig, voiceOptions, stats,
+    limits: activeSegmentLimits(state.provider, state.openrouterModel),
+    actions: {
+      selectProvider, setCredential, setRememberCredential, selectOpenRouterModel, setMinimaxModel,
+      setText: (text: string) => dispatch({ type: "patch", patch: { text } }),
+      setVoice: (voice: string) => dispatch({ type: "patch", patch: { voice } }),
+      setLanguage: (language: string) => dispatch({ type: "patch", patch: { language } }),
+      setSpeed: (speed: number) => dispatch({ type: "patch", patch: { speed } }),
+      setSegmentChars: (value: number) => dispatch({ type: "segment", value }),
+      setLowLatency: (lowLatency: boolean) => dispatch({ type: "patch", patch: { lowLatency } }),
+      setTextNormalization: (textNormalization: boolean) => dispatch({ type: "patch", patch: { textNormalization } }),
+      loadSample: () => dispatch({ type: "patch", patch: { text: SAMPLE_TEXT } }),
+      clearText: () => dispatch({ type: "patch", patch: { text: "" } }),
+      loadTextFile: async (file: File) => dispatch({ type: "patch", patch: { text: await file.text(), status: `Loaded ${file.name}.` } }),
+      saveOpenRouterClone, deleteOpenRouterClone, saveMinimaxClone, deleteMinimaxClone,
+      connectGoogle, disconnectGoogle, refreshGoogle, startNarration, stopNarration, download
+    }
+  };
+}
+
+function mergeVoices(local: VoiceClone[], remote: VoiceClone[]) {
+  const merged = new Map(local.map((voice) => [voice.id, voice]));
+  remote.forEach((voice) => {
+    const saved = merged.get(voice.id);
+    merged.set(voice.id, { ...voice, ...saved, name: saved?.name || voice.name || voice.id });
+  });
+  return [...merged.values()];
+}

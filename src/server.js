@@ -9,7 +9,7 @@ import { existsSync, readFileSync, promises as fs } from "node:fs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
-const publicDir = path.join(rootDir, "public");
+const publicDir = path.resolve(rootDir, process.env.STATIC_DIR || "dist");
 
 loadDotEnv(path.join(rootDir, ".env"));
 

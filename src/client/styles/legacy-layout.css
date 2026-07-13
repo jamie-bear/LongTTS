@@ -1,18 +1,3 @@
-:root {
-  color-scheme: light;
-  --ink: #17201c;
-  --muted: #60706a;
-  --line: #d7ded9;
-  --panel: #ffffff;
-  --surface: #f5f7f2;
-  --accent: #146c5f;
-  --accent-strong: #0d4f47;
-  --gold: #c8872a;
-  --rose: #b45d69;
-  --blue: #466ea6;
-  --shadow: 0 20px 60px rgba(33, 45, 39, 0.12);
-}
-
 * {
   box-sizing: border-box;
 }

@@ -1,0 +1,10 @@
+node_modules/
+node_modules_pnpm/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+.secrets/
+.env
+*.tsbuildinfo

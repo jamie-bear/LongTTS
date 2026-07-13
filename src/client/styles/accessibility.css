@@ -1,0 +1,27 @@
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-action) 30%, transparent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .provider-model-panel,
+  .voice-clone-form {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-model-panel span {
+    grid-column: 1;
+  }
+
+  .voice-clone-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

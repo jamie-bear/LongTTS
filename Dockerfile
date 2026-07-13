@@ -1,3 +1,14 @@
+FROM node:24-alpine AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY index.html tsconfig*.json vite.config.ts ./
+COPY src/client ./src/client
+RUN npm run build
+
 FROM node:24-alpine AS runtime
 
 WORKDIR /app
@@ -7,7 +18,7 @@ ENV PORT=10203
 
 COPY package.json ./
 COPY src ./src
-COPY public ./public
+COPY --from=build /app/dist ./dist
 
 EXPOSE 10203
 

@@ -1,0 +1,29 @@
+:root {
+  color-scheme: light;
+  --color-text: #17201c;
+  --color-text-muted: #60706a;
+  --color-border: #d7ded9;
+  --color-panel: #ffffff;
+  --color-surface: #f5f7f2;
+  --color-action: #146c5f;
+  --color-action-strong: #0d4f47;
+  --color-accent-warm: #c8872a;
+  --color-accent-rose: #b45d69;
+  --color-accent-blue: #466ea6;
+  --radius-control: 8px;
+  --shadow-panel: 0 20px 60px rgba(33, 45, 39, 0.12);
+  --motion-fast: 140ms;
+
+  /* Compatibility aliases keep the current presentation stable during migration. */
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --line: var(--color-border);
+  --panel: var(--color-panel);
+  --surface: var(--color-surface);
+  --accent: var(--color-action);
+  --accent-strong: var(--color-action-strong);
+  --gold: var(--color-accent-warm);
+  --rose: var(--color-accent-rose);
+  --blue: var(--color-accent-blue);
+  --shadow: var(--shadow-panel);
+}

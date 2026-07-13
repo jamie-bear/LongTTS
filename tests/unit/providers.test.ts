@@ -1,0 +1,19 @@
+import { activeSegmentLimits, isOpenRouterPcmModel, isVoxtralModel, PROVIDER_ORDER, PROVIDERS } from "../../src/client/config/providers";
+
+describe("provider registry", () => {
+  it("contains every supported provider, including the restored Gemini option", () => {
+    expect(PROVIDER_ORDER).toEqual(["openrouter", "minimax", "xai", "gemini", "google", "resemble"]);
+    expect(Object.keys(PROVIDERS)).toHaveLength(6);
+  });
+
+  it("applies the quality-first OpenRouter Gemini segment limits", () => {
+    expect(isOpenRouterPcmModel("google/gemini-tts")).toBe(true);
+    expect(activeSegmentLimits("openrouter", "google/gemini-tts")).toEqual({ defaultSegmentChars: 500, maxSegmentChars: 4500 });
+    expect(activeSegmentLimits("openrouter", "mistral/voxtral-mini-tts")).toEqual({ defaultSegmentChars: 4500, maxSegmentChars: 12000 });
+  });
+
+  it("recognizes Voxtral models without coupling the view to model IDs", () => {
+    expect(isVoxtralModel("mistral/voxtral-mini-tts-2603")).toBe(true);
+    expect(isVoxtralModel("openai/gpt-audio")).toBe(false);
+  });
+});
