@@ -152,6 +152,19 @@ const PROVIDERS = {
     voices: [{ value: "", label: "Select a model to load voices" }],
     languages: [{ value: "auto", label: "Auto" }]
   },
+  resemble: {
+    label: "Resemble.ai: Custom Voices",
+    storageKey: "resembleApiKey",
+    credentialLabel: "Resemble.ai API key",
+    credentialPlaceholder: "Bearer token",
+    defaultVoice: "",
+    defaultLanguage: "auto",
+    defaultSegmentChars: 4500,
+    maxSegmentChars: 12000,
+    lowLatencyLabel: "",
+    voices: [{ value: "", label: "Enter a Resemble.ai API key to load custom voices" }],
+    languages: [{ value: "auto", label: "Auto" }]
+  },
   google: {
     label: "Google: Gemini 3.1 Flash TTS (Preview)",
     storageKey: "googleTtsCredential",
@@ -196,19 +209,23 @@ const state = {
     gemini: "",
     xai: "",
     google: "",
-    openrouter: ""
+    openrouter: "",
+    resemble: ""
   },
   segmentCharsByProvider: {
     gemini: PROVIDERS.gemini.defaultSegmentChars,
     xai: PROVIDERS.xai.defaultSegmentChars,
     google: PROVIDERS.google.defaultSegmentChars,
-    openrouter: 4500
+    openrouter: 4500,
+    resemble: PROVIDERS.resemble.defaultSegmentChars
   },
   openrouterModels: [],
   openrouterVoicesByModel: {},
   openrouterModel: "",
   openrouterVoiceClones: [],
   openrouterModelLoadTimer: null,
+  resembleVoices: [],
+  resembleVoiceLoadTimer: null,
   googleOAuth: {
     configured: false,
     connected: false,
@@ -247,6 +264,7 @@ function init() {
   state.credentialsByProvider.gemini = sessionStorage.getItem(PROVIDERS.gemini.storageKey) || "";
   state.credentialsByProvider.xai = sessionStorage.getItem(PROVIDERS.xai.storageKey) || "";
   state.credentialsByProvider.openrouter = sessionStorage.getItem(PROVIDERS.openrouter.storageKey) || "";
+  state.credentialsByProvider.resemble = sessionStorage.getItem(PROVIDERS.resemble.storageKey) || "";
   state.openrouterModel = sessionStorage.getItem("openrouterModel") || "";
   sessionStorage.removeItem(PROVIDERS.google.storageKey);
   state.provider = sanitizeProvider(sessionStorage.getItem("ttsProvider"));
@@ -290,6 +308,9 @@ function init() {
   if (state.provider === "openrouter" && state.credentialsByProvider.openrouter) {
     scheduleOpenRouterModelsLoad(0);
   }
+  if (state.provider === "resemble" && state.credentialsByProvider.resemble) {
+    scheduleResembleVoicesLoad(0);
+  }
 }
 
 function handleProviderChange() {
@@ -306,12 +327,18 @@ function handleProviderChange() {
   if (state.provider === "openrouter" && state.credentialsByProvider.openrouter) {
     scheduleOpenRouterModelsLoad(0);
   }
+  if (state.provider === "resemble" && state.credentialsByProvider.resemble) {
+    scheduleResembleVoicesLoad(0);
+  }
 }
 
 function handleApiKeyInput() {
   persistKeyPreference();
   if (state.provider === "openrouter") {
     scheduleOpenRouterModelsLoad(450);
+  }
+  if (state.provider === "resemble") {
+    scheduleResembleVoicesLoad(450);
   }
 }
 
@@ -337,8 +364,8 @@ function applyProviderConfig() {
     elements.rememberKey.checked = false;
   }
   elements.lowLatencyLabel.textContent = config.lowLatencyLabel;
-  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter");
-  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter";
+  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter" || state.provider === "resemble");
+  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter" || state.provider === "resemble";
   elements.textNormalizationLine.classList.toggle("is-hidden", state.provider !== "xai");
   elements.textNormalization.disabled = state.provider !== "xai";
   elements.googleAuthPanel.classList.toggle("is-hidden", state.provider !== "google");
@@ -348,7 +375,9 @@ function applyProviderConfig() {
 
   const voiceOptions = state.provider === "openrouter"
     ? getOpenRouterVoiceOptions(state.openrouterModel)
-    : config.voices;
+    : state.provider === "resemble"
+      ? getResembleVoiceOptions()
+      : config.voices;
   populateSelect(elements.voice, voiceOptions, previousVoice, config.defaultVoice);
   populateSelect(elements.language, config.languages, previousLanguage, config.defaultLanguage);
 
@@ -385,12 +414,12 @@ function getActiveSegmentConfig(config) {
 }
 
 function sanitizeProvider(value) {
-  if (value === "xai" || value === "google" || value === "openrouter") return value;
+  if (value === "xai" || value === "google" || value === "openrouter" || value === "resemble") return value;
   return "openrouter";
 }
 
 function usesPcmPlayback(provider) {
-  return provider === "gemini" || provider === "google";
+  return provider === "gemini" || provider === "google" || provider === "resemble";
 }
 
 function populateSelect(select, options, preferredValue, fallbackValue) {
@@ -406,6 +435,47 @@ function populateSelect(select, options, preferredValue, fallbackValue) {
   const hasPreferred = options.some((option) => option.value === preferredValue);
   const hasFallback = options.some((option) => option.value === fallbackValue);
   select.value = hasPreferred ? preferredValue : hasFallback ? fallbackValue : options[0].value;
+}
+
+
+function getResembleVoiceOptions() {
+  return state.resembleVoices.length
+    ? state.resembleVoices.map((voice) => ({ value: voice.id, label: voice.language ? `${voice.name} (${voice.language})` : voice.name }))
+    : PROVIDERS.resemble.voices;
+}
+
+function scheduleResembleVoicesLoad(delay) {
+  window.clearTimeout(state.resembleVoiceLoadTimer);
+  state.resembleVoiceLoadTimer = window.setTimeout(loadResembleVoices, delay);
+}
+
+async function loadResembleVoices() {
+  const apiKey = elements.apiKey.value.trim();
+  if (!apiKey || state.provider !== "resemble") {
+    state.resembleVoices = [];
+    populateSelect(elements.voice, getResembleVoiceOptions(), "", PROVIDERS.resemble.defaultVoice);
+    return;
+  }
+
+  populateSelect(elements.voice, [{ value: "", label: "Loading Resemble.ai custom voices..." }], elements.voice.value, "");
+  try {
+    const response = await fetch("/api/resemble/voices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey })
+    });
+    const body = await readJsonResponse(response);
+    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+    state.resembleVoices = body.voices || [];
+    populateSelect(elements.voice, getResembleVoiceOptions(), elements.voice.value, state.resembleVoices[0]?.id || "");
+    setStatus(state.resembleVoices.length
+      ? `Loaded ${state.resembleVoices.length.toLocaleString()} Resemble.ai custom voice${state.resembleVoices.length === 1 ? "" : "s"}.`
+      : "No ready Resemble.ai custom voices were returned for this key.");
+  } catch (error) {
+    state.resembleVoices = [];
+    populateSelect(elements.voice, [{ value: "", label: "Could not load Resemble.ai voices" }], "", "");
+    setStatus(`Resemble.ai voice load failed: ${error.message}`);
+  }
 }
 
 function handleOpenRouterModelChange() {
@@ -1343,6 +1413,8 @@ function updateTextStats() {
     elements.costEstimate.textContent = "Cloud Gemini-TTS pricing varies by model";
   } else if (state.provider === "openrouter") {
     elements.costEstimate.textContent = "OpenRouter pricing varies by model";
+  } else if (state.provider === "resemble") {
+    elements.costEstimate.textContent = "Resemble.ai pricing varies by plan";
   } else {
     elements.costEstimate.textContent = "Cloud TTS pricing varies by voice";
   }

@@ -19,6 +19,9 @@ const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modali
 const OPENROUTER_TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
 const OPENROUTER_VOICES_URL = "https://openrouter.ai/api/v1/audio/voices";
 const GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize";
+const RESEMBLE_API_VOICES_URL = "https://app.resemble.ai/api/v2/voices";
+const RESEMBLE_SYNTHESIS_URL = "https://f.cluster.resemble.ai/synthesize";
+const RESEMBLE_SAMPLE_RATE = 22_050;
 const GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -105,6 +108,11 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith("/api/openrouter/voices")) {
       await handleOpenRouterVoices(req, res, url.pathname);
+      return;
+    }
+
+    if (url.pathname === "/api/resemble/voices") {
+      await handleResembleVoices(req, res);
       return;
     }
 
@@ -394,6 +402,85 @@ async function readJsonRequest(req, limitBytes) {
   } catch {
     throw new Error("Request body must be valid JSON.");
   }
+}
+
+
+async function handleResembleVoices(req, res) {
+  if (req.method !== "POST") {
+    res.writeHead(405, { "Content-Type": "application/json; charset=utf-8", Allow: "POST" });
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonRequest(req, 16_384);
+  } catch (error) {
+    sendJson(res, 400, { error: error.message });
+    return;
+  }
+
+  const apiKey = String(body.apiKey || "").trim();
+  if (!apiKey) {
+    sendJson(res, 400, { error: "Resemble.ai API key is required." });
+    return;
+  }
+
+  try {
+    const voices = await listResembleCustomVoices(apiKey);
+    sendJson(res, 200, { voices });
+  } catch (error) {
+    sendJson(res, 502, { error: `Resemble.ai voice discovery failed: ${error.message}` });
+  }
+}
+
+async function listResembleCustomVoices(apiKey) {
+  const voices = [];
+  const pageSize = 100;
+  for (let page = 1; page <= 20; page += 1) {
+    const url = new URL(RESEMBLE_API_VOICES_URL);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("page_size", String(pageSize));
+    url.searchParams.set("pre_built_resemble_voice", "false");
+
+    const response = await fetch(url, {
+      headers: { Authorization: normalizeBearerToken(apiKey) }
+    });
+    const text = await response.text().catch(() => "");
+    const parsed = parseJsonText(text);
+    if (!response.ok) {
+      throw new Error(parsed?.error || parsed?.message || summarizeNonJsonResponse(text, response));
+    }
+    if (!parsed) throw new Error(`Resemble.ai returned ${describeContentType(response)} instead of JSON.`);
+
+    voices.push(...normalizeResembleVoices(parsed));
+    const pageCount = Number(parsed.page_count || parsed.total_pages || page);
+    if (!Number.isFinite(pageCount) || page >= pageCount) break;
+  }
+  return voices;
+}
+
+function normalizeResembleVoices(parsed) {
+  const items = Array.isArray(parsed?.items) ? parsed.items : Array.isArray(parsed?.voices) ? parsed.voices : Array.isArray(parsed) ? parsed : [];
+  return items
+    .filter((voice) => !voice?.pre_built_resemble_voice && String(voice?.source || "").toLowerCase() !== "marketplace")
+    .filter((voice) => {
+      const status = String(voice?.voice_status || voice?.status || "").toLowerCase();
+      return !status || status === "ready";
+    })
+    .filter((voice) => voice?.api_support?.sync_tts !== false)
+    .map((voice) => ({
+      id: String(voice?.uuid || voice?.id || ""),
+      name: String(voice?.name || voice?.uuid || voice?.id || ""),
+      language: String(voice?.default_language || ""),
+      languages: Array.isArray(voice?.supported_languages) ? voice.supported_languages.map(String) : []
+    }))
+    .filter((voice) => voice.id);
+}
+
+function normalizeBearerToken(apiKey) {
+  const token = String(apiKey || "").trim();
+  return /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`;
 }
 
 async function handleGoogleOAuthStatus(req, res) {
@@ -794,6 +881,8 @@ function createNarrationSession(client) {
       sendJsonWs(client, { type: "status", message: `Using OpenRouter ${options.model}.` });
     } else if (options.provider === "gemini") {
       sendJsonWs(client, { type: "status", message: "Using Gemini Developer API TTS." });
+    } else if (options.provider === "resemble") {
+      sendJsonWs(client, { type: "status", message: "Using Resemble.ai custom voice TTS." });
     } else {
       await connectUpstream();
     }
@@ -861,6 +950,11 @@ function createNarrationSession(client) {
       return;
     }
 
+    if (state.options.provider === "resemble") {
+      await synthesizeResembleSegment(segment);
+      return;
+    }
+
     const upstream = state.upstream;
     if (!upstream || upstream.readyState !== WebSocketConnection.OPEN) {
       throw new Error("xAI connection is not open.");
@@ -914,6 +1008,41 @@ function createNarrationSession(client) {
 
     try {
       const chunk = await synthesizeOpenRouterSpeech(segment, state.options, state.apiKey, controller.signal);
+      if (state.cancelled) return;
+
+      state.currentSegmentBytes = chunk.length;
+      state.totalBytes += chunk.length;
+
+      if (client.readyState === WebSocketConnection.OPEN) {
+        client.send(chunk, { binary: true });
+      }
+
+      state.waitingForAudioDone = false;
+      reportBytes(true);
+
+      sendJsonWs(client, {
+        type: "segmentDone",
+        index: state.segmentIndex + 1,
+        totalSegments: state.segments.length,
+        traceId: null,
+        bytes: state.currentSegmentBytes
+      });
+
+      state.segmentIndex += 1;
+      await pumpNextSegment();
+    } finally {
+      if (state.currentRequest === controller) {
+        state.currentRequest = null;
+      }
+    }
+  }
+
+  async function synthesizeResembleSegment(segment) {
+    const controller = new AbortController();
+    state.currentRequest = controller;
+
+    try {
+      const chunk = await synthesizeResembleSpeech(segment, state.options, state.apiKey, controller.signal);
       if (state.cancelled) return;
 
       state.currentSegmentBytes = chunk.length;
@@ -1107,7 +1236,9 @@ function sanitizeOptions(raw) {
       ? "Enceladus"
       : provider === "openrouter"
         ? "alloy"
-        : "eve";
+        : provider === "resemble"
+          ? ""
+          : "eve";
   const voiceId = provider === "openrouter" ? String(raw.voiceId || "").trim() : "";
   const rawVoice = String(raw.voice || "").startsWith("voice_id:") ? defaultVoice : raw.voice;
   const voice = sanitizeVoice(rawVoice, defaultVoice, provider);
@@ -1123,6 +1254,9 @@ function sanitizeOptions(raw) {
   const segmentChars = Math.round(clamp(Number(raw.segmentChars || defaultSegmentChars), MIN_SEGMENT_CHARS, maxSegmentChars));
   if (provider === "openrouter" && !model) {
     throw new Error("Select an OpenRouter speech model before starting narration.");
+  }
+  if (provider === "resemble" && !voice) {
+    throw new Error("Select a Resemble.ai custom voice before starting narration.");
   }
 
   return {
@@ -1166,6 +1300,7 @@ function sanitizeProvider(rawProvider) {
   if (rawProvider === "google") return "google";
   if (rawProvider === "gemini") return "gemini";
   if (rawProvider === "openrouter") return "openrouter";
+  if (rawProvider === "resemble") return "resemble";
   return "xai";
 }
 
@@ -1179,7 +1314,7 @@ function sanitizeVoice(rawVoice, fallback, provider) {
     return GEMINI_TTS_VOICES.has(voice) ? voice : fallback;
   }
 
-  if (provider === "openrouter") {
+  if (provider === "openrouter" || provider === "resemble") {
     return voice || fallback;
   }
 
@@ -1206,13 +1341,14 @@ function normalizeGeminiVoiceName(voice) {
 
 function getProviderAudioEncoding(optionsOrProvider) {
   const provider = typeof optionsOrProvider === "string" ? optionsOrProvider : optionsOrProvider.provider;
-  if (provider === "gemini" || provider === "google") return "pcm_s16le";
+  if (provider === "gemini" || provider === "google" || provider === "resemble") return "pcm_s16le";
   if (provider === "openrouter" && requiresOpenRouterPcm(optionsOrProvider.model)) return "pcm_s16le";
   return "mpeg";
 }
 
 function getProviderSampleRate(optionsOrProvider) {
   const provider = typeof optionsOrProvider === "string" ? optionsOrProvider : optionsOrProvider.provider;
+  if (provider === "resemble") return RESEMBLE_SAMPLE_RATE;
   if (provider === "gemini" || provider === "google") return GEMINI_SAMPLE_RATE;
   if (provider === "openrouter" && requiresOpenRouterPcm(optionsOrProvider.model)) return GEMINI_SAMPLE_RATE;
   return 24000;
@@ -1239,6 +1375,46 @@ function buildXaiUrl(options) {
   });
 
   return `${XAI_TTS_URL}?${params}`;
+}
+
+
+async function synthesizeResembleSpeech(text, options, apiKey, signal) {
+  const trimmedApiKey = String(apiKey || "").trim();
+  if (!trimmedApiKey) {
+    throw new Error("Add your Resemble.ai API key before starting narration.");
+  }
+
+  const response = await fetch(RESEMBLE_SYNTHESIS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: normalizeBearerToken(trimmedApiKey)
+    },
+    body: JSON.stringify({
+      voice_uuid: options.voice,
+      data: text,
+      sample_rate: RESEMBLE_SAMPLE_RATE,
+      precision: "PCM_16",
+      output_format: "wav"
+    }),
+    signal
+  });
+
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Resemble.ai TTS request failed: ${body?.error || body?.message || `${response.status} ${response.statusText}`}`);
+  }
+  if (!body?.audio_content) {
+    throw new Error("Resemble.ai response did not include audio content.");
+  }
+
+  return extractLinear16Pcm(Buffer.from(body.audio_content, "base64"));
 }
 
 async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
@@ -1581,6 +1757,7 @@ function providerLabel(provider) {
   if (provider === "google") return "Google Cloud TTS";
   if (provider === "gemini") return "Gemini API";
   if (provider === "openrouter") return "OpenRouter";
+  if (provider === "resemble") return "Resemble.ai";
   return "xAI";
 }
 

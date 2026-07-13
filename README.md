@@ -1,16 +1,16 @@
 # LongTTS
 
-A local audiobook web app for turning long-form text into narration through OpenRouter speech models, Gemini TTS, xAI streaming TTS, or Google Cloud Text-to-Speech voices.
+A local audiobook web app for turning long-form text into narration through OpenRouter speech models, Gemini TTS, xAI streaming TTS, Google Cloud Text-to-Speech voices, or Resemble.ai custom voices.
 
 ## Features
 
 - Paste a book or chapter, or load a `.txt` file.
-- Pick OpenRouter, xAI, or Google Cloud TTS at runtime.
-- Keep provider credentials local. OpenRouter and xAI API keys stay in the active browser/backend session; Google OAuth stores a refresh token in the ignored `.secrets` folder.
+- Pick OpenRouter, xAI, Google Cloud TTS, or Resemble.ai at runtime.
+- Keep provider credentials local. OpenRouter, xAI, Resemble.ai, and Gemini API keys stay in the active browser/backend session; Google OAuth stores a refresh token in the ignored `.secrets` folder.
 - Streams or buffers audio through a backend WebSocket proxy so provider credentials are not exposed in frontend source.
 - Splits long text by paragraph and sentence, using short quality-first defaults for Gemini and Google while keeping xAI segments below the `text.delta` limit and Google segments below Cloud TTS request-size limits.
 - Generates every segment sequentially after narration starts, independent of playback position, while still streaming audio for listening.
-- Supports OpenRouter speech models, Voxtral zero-shot voice clones, Gemini TTS voices through Google Cloud TTS, built-in xAI voices, language selection where available, speed controls, low-latency xAI options, and xAI text normalization.
+- Supports OpenRouter speech models, Voxtral zero-shot voice clones, Gemini TTS voices through Google Cloud TTS, built-in xAI voices, Resemble.ai custom voice discovery, language selection where available, speed controls, low-latency xAI options, and xAI text normalization.
 - Automatically stitches completed segments into one continuous MP3 or WAV download after generation finishes.
 
 ## Run With Docker Compose
@@ -74,6 +74,8 @@ For xAI, this app uses the streaming TTS endpoint, `wss://api.x.ai/v1/tts`. The 
 
 For Google Cloud TTS, this app uses Cloud Text-to-Speech `text:synthesize` at `https://texttospeech.googleapis.com/v1/text:synthesize` with `voice.modelName` set to `gemini-3.1-flash-tts-preview`. Google returns one base64 LINEAR16 payload per segment; the backend removes the WAV header and forwards 24 kHz PCM audio so the browser can play and download a continuous WAV. Cloud Gemini-TTS requires principal-backed authentication plus permission to call the model endpoint; use the local OAuth connection above before starting narration.
 
+Resemble.ai uses `https://app.resemble.ai/api/v2/voices` to list ready custom voices after a Resemble.ai API key is entered, then calls `https://f.cluster.resemble.ai/synthesize` with the selected `voice_uuid`, 22.05 kHz sample rate, and `PCM_16` WAV precision. Resemble.ai returns base64 WAV audio; the backend forwards the decoded 16-bit PCM payload so the browser can play and download a continuous WAV.
+
 Gemini and Google Cloud TTS default to very short 500-character segments to avoid the quality drop that can appear in longer synthesized passages. Cloud Gemini-TTS has a 4,000-byte text-field limit per request, so the backend applies a stricter Google segment cap and checks UTF-8 byte length when splitting text.
 
 Sources:
@@ -91,3 +93,7 @@ Sources:
 - https://docs.cloud.google.com/text-to-speech/docs/reference/rest/v1/text/synthesize
 - https://docs.cloud.google.com/docs/authentication
 - https://docs.cloud.google.com/text-to-speech/quotas
+
+- https://docs.resemble.ai/getting-started/authentication
+- https://docs.resemble.ai/voice-creation/voices/list
+- https://docs.resemble.ai/guides/creating-clips/getting-started
