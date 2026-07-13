@@ -23,6 +23,7 @@
           <label for="provider">Provider</label>
           <select id="provider">
             <option value="openrouter">OpenRouter: Various Models</option>
+            <option value="minimax">MiniMax: Custom Voices</option>
             <option value="xai">xAI: Grok TTS 1.0</option>
             <option value="google">Google: Gemini 3.1 Flash TTS (Preview)</option>
             <option value="resemble">Resemble.ai: Custom Voices</option>
@@ -79,6 +80,77 @@
             <button id="deleteVoiceCloneButton" type="button">Delete selected clone</button>
           </div>
           <p class="voice-clone-policy">Only clone voices you have permission to use. Disclose AI-generated speech where required.</p>
+        </div>
+
+        <div id="minimaxModelPanel" class="provider-model-panel is-hidden" aria-live="polite">
+          <label for="minimaxModel">MiniMax speech model</label>
+          <select id="minimaxModel">
+            <option value="speech-2.8-hd">speech-2.8-hd</option>
+            <option value="speech-2.8-turbo">speech-2.8-turbo</option>
+            <option value="speech-2.6-hd">speech-2.6-hd</option>
+            <option value="speech-2.6-turbo">speech-2.6-turbo</option>
+            <option value="speech-02-hd">speech-02-hd</option>
+            <option value="speech-02-turbo">speech-02-turbo</option>
+          </select>
+          <span id="minimaxModelHint">Choose the MiniMax model used for both voice cloning preview and narration.</span>
+        </div>
+
+        <div id="minimaxVoiceClonePanel" class="voice-clone-panel is-hidden" aria-live="polite">
+          <div class="voice-clone-header">
+            <div>
+              <strong>MiniMax voice clones</strong>
+              <span id="minimaxVoiceCloneHint">Upload 10 seconds to 5 minutes of MP3, M4A, or WAV audio to create a cloned voice.</span>
+            </div>
+            <button id="refreshMinimaxVoicesButton" type="button">Refresh voices</button>
+          </div>
+          <div class="voice-clone-form">
+            <label>
+              <span>Voice name / ID</span>
+              <input id="minimaxVoiceCloneName" type="text" placeholder="Narrator voice">
+            </label>
+            <label>
+              <span>Clone preview text</span>
+              <input id="minimaxVoiceCloneText" type="text" placeholder="A gentle breeze passes over the soft grass.">
+            </label>
+            <label>
+              <span>Language/accent recognition</span>
+              <select id="minimaxVoiceCloneLanguageModel">
+                <option value="auto">Auto detect</option>
+                <option value="English">English</option>
+                <option value="Chinese">Chinese</option>
+                <option value="Chinese,Yue">Chinese (Cantonese)</option>
+                <option value="Spanish">Spanish</option>
+                <option value="French">French</option>
+                <option value="Portuguese">Portuguese</option>
+                <option value="German">German</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Russian">Russian</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Italian">Italian</option>
+                <option value="Korean">Korean</option>
+                <option value="Hindi">Hindi</option>
+              </select>
+            </label>
+            <label>
+              <span>Prompt text for accent/style (optional)</span>
+              <input id="minimaxVoiceClonePromptText" type="text" placeholder="Text spoken in the prompt audio">
+            </label>
+            <label>
+              <span>Source transcript check (optional)</span>
+              <input id="minimaxVoiceCloneValidationText" type="text" maxlength="200" placeholder="Transcript of the source audio">
+            </label>
+            <label>
+              <span>Source audio</span>
+              <input id="minimaxVoiceCloneAudio" type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav">
+            </label>
+            <label>
+              <span>Prompt audio (optional, &lt;8s)</span>
+              <input id="minimaxVoiceClonePromptAudio" type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav">
+            </label>
+            <button id="saveMinimaxVoiceCloneButton" type="button" class="primary">Create voice clone</button>
+            <button id="deleteMinimaxVoiceCloneButton" type="button">Delete local entry</button>
+          </div>
+          <p class="voice-clone-policy">Only clone voices you have permission to use. Prompt audio and text can improve accent, language, and speaking-style matching.</p>
         </div>
 
         <div id="googleAuthPanel" class="google-auth-panel is-hidden" aria-live="polite">
