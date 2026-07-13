@@ -513,11 +513,6 @@ async function createMinimaxVoiceClone(res, body, apiKey) {
     };
     payload.model = speechModel;
     if (languageModel) payload.language_boost = languageModel;
-    const textValidation = String(body.textValidation || "").trim();
-    if (textValidation) {
-      payload.text_validation = textValidation.slice(0, 200);
-      payload.accuracy = 0.7;
-    }
     const promptText = String(body.promptText || "").trim();
     if (promptFileId || promptText) {
       if (!promptFileId || !promptText) throw new Error("MiniMax prompt audio and prompt text must be provided together.");
