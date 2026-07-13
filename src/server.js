@@ -468,7 +468,8 @@ async function handleMinimaxVoiceCreate(req, res) {
       need_noise_reduction: true,
       need_volume_normalization: true
     };
-    if (languageModel) payload.model = languageModel;
+    payload.model = speechModel;
+    if (languageModel) payload.language_boost = languageModel;
     const textValidation = String(body.textValidation || "").trim();
     if (textValidation) {
       payload.text_validation = textValidation.slice(0, 200);
@@ -545,7 +546,7 @@ function createMiniMaxVoiceId(name) {
 
 function sanitizeMiniMaxModel(value) {
   const model = String(value || "speech-2.8-hd").trim();
-  return ["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo"].includes(model) ? model : "speech-2.8-hd";
+  return ["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo", "speech-01-hd", "speech-01-turbo"].includes(model) ? model : "speech-2.8-hd";
 }
 
 function sanitizeMiniMaxCloneLanguageModel(value) {
@@ -555,7 +556,10 @@ function sanitizeMiniMaxCloneLanguageModel(value) {
     "Chinese", "Chinese,Yue", "English", "Arabic", "Russian", "Spanish", "French",
     "Portuguese", "German", "Turkish", "Dutch", "Ukrainian", "Vietnamese",
     "Indonesian", "Japanese", "Italian", "Korean", "Thai", "Polish", "Romanian",
-    "Greek", "Czech", "Finnish", "Hindi"
+    "Greek", "Czech", "Finnish", "Hindi", "Bulgarian", "Danish", "Hebrew",
+    "Malay", "Persian", "Slovak", "Swedish", "Croatian", "Filipino",
+    "Hungarian", "Norwegian", "Slovenian", "Catalan", "Nynorsk", "Tamil",
+    "Afrikaans"
   ]);
   return allowed.has(model) ? model : "auto";
 }
@@ -1597,6 +1601,8 @@ async function synthesizeMiniMaxSpeech(text, options, apiKey, signal) {
       model: sanitizeMiniMaxModel(options.model),
       text,
       stream: false,
+      language_boost: sanitizeMiniMaxCloneLanguageModel(options.language),
+      output_format: "hex",
       voice_setting: {
         voice_id: options.voice,
         speed: options.speed,

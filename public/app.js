@@ -178,8 +178,24 @@ const PROVIDERS = {
     defaultSegmentChars: 4500,
     maxSegmentChars: 10000,
     lowLatencyLabel: "",
+    costPerMillionChars: 30,
     voices: [{ value: "", label: "Create or refresh MiniMax custom voices" }],
-    languages: [{ value: "auto", label: "Auto" }]
+    languages: [
+      { value: "auto", label: "Auto" },
+      { value: "English", label: "English" },
+      { value: "Chinese", label: "Chinese" },
+      { value: "Chinese,Yue", label: "Chinese (Cantonese)" },
+      { value: "Spanish", label: "Spanish" },
+      { value: "French", label: "French" },
+      { value: "Portuguese", label: "Portuguese" },
+      { value: "German", label: "German" },
+      { value: "Arabic", label: "Arabic" },
+      { value: "Russian", label: "Russian" },
+      { value: "Japanese", label: "Japanese" },
+      { value: "Italian", label: "Italian" },
+      { value: "Korean", label: "Korean" },
+      { value: "Hindi", label: "Hindi" }
+    ]
   },
   resemble: {
     label: "Resemble.ai: Custom Voices",
