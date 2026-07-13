@@ -26,6 +26,7 @@ const MINIMAX_FILE_UPLOAD_URL = "https://api.minimax.io/v1/files/upload";
 const MINIMAX_VOICE_CLONE_URL = "https://api.minimax.io/v1/voice_clone";
 const MINIMAX_TTS_URL = "https://api.minimax.io/v1/t2a_v2";
 const MINIMAX_SAMPLE_RATE = 24_000;
+const MINIMAX_REQUEST_TIMEOUT_MS = 45_000;
 const GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
@@ -458,27 +459,37 @@ async function handleMinimaxVoiceCreate(req, res) {
       });
     }
 
-    const model = sanitizeMiniMaxModel(body.model);
+    const speechModel = sanitizeMiniMaxModel(body.model);
+    const languageModel = sanitizeMiniMaxCloneLanguageModel(body.languageModel);
     const payload = {
-      file_id: sourceFileId,
+      file_id: Number(sourceFileId) || sourceFileId,
       voice_id: voiceId,
-      text: String(body.previewText || "A gentle breeze passes over the soft grass, accompanied by a fresh scent and birdsong.").trim().slice(0, 500),
-      model
+      text: String(body.previewText || "A gentle breeze passes over the soft grass, accompanied by a fresh scent and birdsong.").trim().slice(0, 1000),
+      need_noise_reduction: true,
+      need_volume_normalization: true
     };
+    if (languageModel) payload.model = languageModel;
+    const textValidation = String(body.textValidation || "").trim();
+    if (textValidation) {
+      payload.text_validation = textValidation.slice(0, 200);
+      payload.accuracy = 0.7;
+    }
     const promptText = String(body.promptText || "").trim();
     if (promptFileId || promptText) {
+      if (!promptFileId || !promptText) throw new Error("MiniMax prompt audio and prompt text must be provided together.");
       payload.clone_prompt = {
-        ...(promptFileId ? { prompt_audio: promptFileId } : {}),
-        ...(promptText ? { prompt_text: promptText.slice(0, 1000) } : {})
+        prompt_audio: Number(promptFileId) || promptFileId,
+        prompt_text: promptText.slice(0, 1000)
       };
     }
 
-    const parsed = await requestMiniMaxJson(MINIMAX_VOICE_CLONE_URL, { apiKey, method: "POST", payload });
+    const parsed = await requestMiniMaxJson(MINIMAX_VOICE_CLONE_URL, { apiKey, method: "POST", payload, timeoutMs: MINIMAX_REQUEST_TIMEOUT_MS });
     sendJson(res, 200, {
       voice: {
         id: voiceId,
         name,
-        model,
+        model: speechModel,
+        cloneLanguageModel: languageModel || "auto",
         sourceFileId,
         promptFileId,
         previewAudio: extractMiniMaxAudioBase64(parsed),
@@ -497,7 +508,8 @@ async function uploadMiniMaxAudio(apiKey, { purpose, audio, filename, contentTyp
   const response = await fetch(MINIMAX_FILE_UPLOAD_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
-    body: form
+    body: form,
+    signal: AbortSignal.timeout(MINIMAX_REQUEST_TIMEOUT_MS)
   });
   const text = await response.text().catch(() => "");
   const parsed = parseJsonText(text);
@@ -507,7 +519,7 @@ async function uploadMiniMaxAudio(apiKey, { purpose, audio, filename, contentTyp
   return String(fileId);
 }
 
-async function requestMiniMaxJson(url, { apiKey, method = "GET", payload = null, signal = undefined }) {
+async function requestMiniMaxJson(url, { apiKey, method = "GET", payload = null, signal = undefined, timeoutMs = MINIMAX_REQUEST_TIMEOUT_MS }) {
   const response = await fetch(url, {
     method,
     headers: {
@@ -515,7 +527,7 @@ async function requestMiniMaxJson(url, { apiKey, method = "GET", payload = null,
       "Content-Type": "application/json; charset=utf-8"
     },
     body: payload ? JSON.stringify(payload) : undefined,
-    signal
+    signal: signal || AbortSignal.timeout(timeoutMs)
   });
   const text = await response.text().catch(() => "");
   const parsed = parseJsonText(text);
@@ -534,6 +546,18 @@ function createMiniMaxVoiceId(name) {
 function sanitizeMiniMaxModel(value) {
   const model = String(value || "speech-2.8-hd").trim();
   return ["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo"].includes(model) ? model : "speech-2.8-hd";
+}
+
+function sanitizeMiniMaxCloneLanguageModel(value) {
+  const model = String(value || "auto").trim();
+  if (model === "auto") return "auto";
+  const allowed = new Set([
+    "Chinese", "Chinese,Yue", "English", "Arabic", "Russian", "Spanish", "French",
+    "Portuguese", "German", "Turkish", "Dutch", "Ukrainian", "Vietnamese",
+    "Indonesian", "Japanese", "Italian", "Korean", "Thai", "Polish", "Romanian",
+    "Greek", "Czech", "Finnish", "Hindi"
+  ]);
+  return allowed.has(model) ? model : "auto";
 }
 
 function extractMiniMaxAudioBase64(parsed) {

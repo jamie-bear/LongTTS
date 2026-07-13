@@ -113,8 +113,31 @@
               <input id="minimaxVoiceCloneText" type="text" placeholder="A gentle breeze passes over the soft grass.">
             </label>
             <label>
+              <span>Language/accent recognition</span>
+              <select id="minimaxVoiceCloneLanguageModel">
+                <option value="auto">Auto detect</option>
+                <option value="English">English</option>
+                <option value="Chinese">Chinese</option>
+                <option value="Chinese,Yue">Chinese (Cantonese)</option>
+                <option value="Spanish">Spanish</option>
+                <option value="French">French</option>
+                <option value="Portuguese">Portuguese</option>
+                <option value="German">German</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Russian">Russian</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Italian">Italian</option>
+                <option value="Korean">Korean</option>
+                <option value="Hindi">Hindi</option>
+              </select>
+            </label>
+            <label>
               <span>Prompt text for accent/style (optional)</span>
               <input id="minimaxVoiceClonePromptText" type="text" placeholder="Text spoken in the prompt audio">
+            </label>
+            <label>
+              <span>Source transcript check (optional)</span>
+              <input id="minimaxVoiceCloneValidationText" type="text" maxlength="200" placeholder="Transcript of the source audio">
             </label>
             <label>
               <span>Source audio</span>

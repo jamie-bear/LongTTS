@@ -22,6 +22,8 @@ const elements = {
   minimaxVoiceCloneName: document.querySelector("#minimaxVoiceCloneName"),
   minimaxVoiceCloneText: document.querySelector("#minimaxVoiceCloneText"),
   minimaxVoiceClonePromptText: document.querySelector("#minimaxVoiceClonePromptText"),
+  minimaxVoiceCloneLanguageModel: document.querySelector("#minimaxVoiceCloneLanguageModel"),
+  minimaxVoiceCloneValidationText: document.querySelector("#minimaxVoiceCloneValidationText"),
   minimaxVoiceCloneAudio: document.querySelector("#minimaxVoiceCloneAudio"),
   minimaxVoiceClonePromptAudio: document.querySelector("#minimaxVoiceClonePromptAudio"),
   saveMinimaxVoiceCloneButton: document.querySelector("#saveMinimaxVoiceCloneButton"),
@@ -516,6 +518,8 @@ async function saveMinimaxVoiceClone() {
   if (!name) return setStatus("Name the MiniMax voice clone first.");
   if (!sourceFile) return setStatus("Choose source audio to create a MiniMax voice clone.");
   if (sourceFile.size > 20 * 1024 * 1024 || (promptFile && promptFile.size > 20 * 1024 * 1024)) return setStatus("MiniMax voice clone audio files must be 20 MB or smaller.");
+  const promptText = elements.minimaxVoiceClonePromptText.value.trim();
+  if ((promptFile && !promptText) || (!promptFile && promptText)) return setStatus("MiniMax prompt audio and prompt text must be provided together.");
   elements.saveMinimaxVoiceCloneButton.disabled = true;
   try {
     const payload = {
@@ -523,7 +527,9 @@ async function saveMinimaxVoiceClone() {
       name,
       model: state.minimaxModel,
       previewText: elements.minimaxVoiceCloneText.value.trim(),
-      promptText: elements.minimaxVoiceClonePromptText.value.trim(),
+      promptText,
+      languageModel: elements.minimaxVoiceCloneLanguageModel.value,
+      textValidation: elements.minimaxVoiceCloneValidationText.value.trim(),
       sourceAudio: await fileToBase64(sourceFile),
       sourceFilename: sourceFile.name,
       sourceContentType: sourceFile.type || "application/octet-stream",
