@@ -7,12 +7,13 @@ The frontend uses React, TypeScript, and Vite. Provider configuration, persisten
 ## Features
 
 - Paste a book or chapter, or load a `.txt` file.
-- Pick OpenRouter, xAI, Google Cloud TTS, or Resemble.ai at runtime.
+- Pick OpenRouter, MiniMax, xAI, Gemini API, Google Cloud TTS, or Resemble.ai at runtime.
 - Keep provider credentials local. OpenRouter, xAI, Resemble.ai, and Gemini API keys stay in the active browser/backend session; Google OAuth stores a refresh token in the ignored `.secrets` folder.
 - Streams or buffers audio through a backend WebSocket proxy so provider credentials are not exposed in frontend source.
 - Splits long text by paragraph and sentence, using short quality-first defaults for Gemini and Google while keeping xAI segments below the `text.delta` limit and Google segments below Cloud TTS request-size limits.
 - Generates every segment sequentially after narration starts, independent of playback position, while still streaming audio for listening.
-- Supports OpenRouter speech models, Voxtral zero-shot voice clones, Gemini TTS voices through Google Cloud TTS, built-in xAI voices, Resemble.ai custom voice discovery, language selection where available, speed controls, low-latency xAI options, and xAI text normalization.
+- Supports OpenRouter speech models, Gemini TTS voices through Google Cloud TTS, built-in xAI voices, MiniMax and Resemble.ai custom voices, language selection where available, speed controls, low-latency xAI options, and xAI text normalization.
+- Displays the selected provider's current balance when its synthesis credential exposes one, and refreshes it after every completed segment.
 - Automatically stitches completed segments into one continuous MP3 or WAV download after generation finishes.
 
 ## Run With Docker Compose
@@ -99,7 +100,7 @@ If your OAuth consent screen is in testing mode, add your Google account as a te
 
 ## Provider Notes
 
-OpenRouter uses `https://openrouter.ai/api/v1/audio/speech` for speech generation and `https://openrouter.ai/api/v1/models?output_modalities=speech` for model discovery. When a Voxtral TTS model is selected, the app also exposes local saved voice management through the OpenRouter provider: create a reusable voice from reference audio, refresh the locally saved voice list, update voice metadata, delete saved clones, and select a saved clone for narration. The reference audio is stored in the browser and sent through OpenRouter speech generation as Mistral-compatible `ref_audio`; built-in model voices are sent as `voice`.
+OpenRouter uses `https://openrouter.ai/api/v1/audio/speech` for speech generation and `https://openrouter.ai/api/v1/models?output_modalities=speech` for model discovery. Every discovered model, including Voxtral TTS, uses the same built-in voice selection and speech-generation flow. The app checks `https://openrouter.ai/api/v1/key` for the selected key's remaining credit limit; keys without a configured limit do not expose an account balance through that endpoint.
 
 Gemini API is the simplest Google option. It uses the Gemini Developer API endpoint `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent` with an AI Studio API key. Gemini TTS returns raw 24 kHz PCM audio, so the browser wraps it as WAV for playback and download.
 
@@ -115,9 +116,7 @@ Sources:
 
 - https://openrouter.ai/blog/announcements/announcing-audio-apis/
 - https://openrouter.ai/mistralai/voxtral-mini-tts-2603/api
-- https://docs.mistral.ai/studio-api/audio/text_to_speech
-- https://docs.mistral.ai/studio-api/audio/text_to_speech/voices
-- https://docs.mistral.ai/studio-api/audio/text_to_speech/speech
+- https://openrouter.ai/docs/api/reference/limits
 - https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
 - https://docs.x.ai/developers/rest-api-reference/inference/voice
 - https://ai.google.dev/gemini-api/docs/speech-generation

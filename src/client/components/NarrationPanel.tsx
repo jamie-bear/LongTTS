@@ -13,6 +13,9 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
   const pcm = state.provider === "gemini" || state.provider === "google" || state.provider === "resemble" || (state.provider === "openrouter" && isOpenRouterPcmModel(state.openrouterModel));
   const extension = state.stitchedAudio?.extension.toUpperCase() || (pcm ? "WAV" : "MP3");
   const partial = state.audioAvailable && state.phase !== "completed";
+  const lowLatencyAvailable = Boolean(providerConfig.supportsLowLatency);
+  const textNormalizationAvailable = Boolean(providerConfig.supportsTextNormalization);
+  const unavailableCapabilityCount = Number(!lowLatencyAvailable) + Number(!textNormalizationAvailable);
   return <aside className="control-panel" aria-label="Narration controls">
     <section className="card setup-card" aria-labelledby="provider-heading">
       <div className="compact-heading"><div className="heading-icon"><Icon name="key" /></div><div><p className="eyebrow">Connection</p><h2 id="provider-heading">Provider & access</h2></div></div>
@@ -30,8 +33,15 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
           {!providerConfig.supportsSpeed && <small>This provider does not accept a reading-speed setting.</small>}
         </div>
         <div className="capability-list" aria-label="Provider capabilities">
-          <Capability available={Boolean(providerConfig.supportsLowLatency)} unavailableText="Only xAI exposes first-chunk latency control."><Checkbox id="lowLatency" label="Optimize first audio chunk" checked={state.lowLatency} disabled={!providerConfig.supportsLowLatency} onChange={(event) => actions.setLowLatency(event.target.checked)} /></Capability>
-          <Capability available={Boolean(providerConfig.supportsTextNormalization)} unavailableText="Only xAI exposes text normalization control."><Checkbox id="textNormalization" label="Normalize numbers and abbreviations" checked={state.textNormalization} disabled={!providerConfig.supportsTextNormalization} onChange={(event) => actions.setTextNormalization(event.target.checked)} /></Capability>
+          {lowLatencyAvailable && <Capability available unavailableText=""><Checkbox id="lowLatency" label="Optimize first audio chunk" checked={state.lowLatency} onChange={(event) => actions.setLowLatency(event.target.checked)} /></Capability>}
+          {textNormalizationAvailable && <Capability available unavailableText=""><Checkbox id="textNormalization" label="Normalize numbers and abbreviations" checked={state.textNormalization} onChange={(event) => actions.setTextNormalization(event.target.checked)} /></Capability>}
+          {unavailableCapabilityCount > 0 && <details className="unavailable-capabilities">
+            <summary><span>Unavailable options</span><span>{unavailableCapabilityCount}</span></summary>
+            <div className="unavailable-capability-list">
+              {!lowLatencyAvailable && <Capability available={false} unavailableText="Only xAI exposes first-chunk latency control."><Checkbox id="lowLatency" label="Optimize first audio chunk" checked={state.lowLatency} disabled onChange={(event) => actions.setLowLatency(event.target.checked)} /></Capability>}
+              {!textNormalizationAvailable && <Capability available={false} unavailableText="Only xAI exposes text normalization control."><Checkbox id="textNormalization" label="Normalize numbers and abbreviations" checked={state.textNormalization} disabled onChange={(event) => actions.setTextNormalization(event.target.checked)} /></Capability>}
+            </div>
+          </details>}
         </div>
       </form>
     </section>

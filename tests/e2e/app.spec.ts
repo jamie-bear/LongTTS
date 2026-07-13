@@ -1,8 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function mockBaseApis(page: Page) {
+  let balanceRequests = 0;
   await page.route("**/api/google-oauth/status", (route) => route.fulfill({ json: { configured: true, connected: true, updatedAt: "2026-07-13T12:00:00.000Z" } }));
   await page.route("**/api/openrouter/models", (route) => route.fulfill({ json: { models: [{ id: "mistral/voxtral-mini-tts", name: "Voxtral Mini TTS", voices: [{ value: "alloy", label: "Alloy" }] }] } }));
+  await page.route("**/api/provider/balance", (route) => route.fulfill({ json: { available: true, amount: 10 - balanceRequests++, currency: "USD", updatedAt: new Date().toISOString() } }));
   await page.route("**/api/resemble/voices", (route) => route.fulfill({ json: { voices: [{ id: "resemble-voice", name: "Resemble Narrator" }] } }));
   await page.route("**/api/minimax/voices", (route) => route.fulfill({ json: { voices: [{ id: "minimax-voice", name: "MiniMax Narrator", model: "speech-2.8-hd" }] } }));
 }
@@ -27,6 +29,33 @@ test.beforeEach(async ({ page, context }) => {
 test("keeps the desktop and mobile shells free of horizontal page overflow", async ({ page }) => {
   await expect(page.getByRole("link", { name: "LongTTS home" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("alternates between API key entry and the saved-session control", async ({ page }) => {
+  const keyInput = page.locator("#apiKey");
+  await keyInput.fill("test-key");
+  await page.getByRole("button", { name: "Keep for session" }).click();
+  await expect(keyInput).toBeHidden();
+  const saved = page.getByRole("checkbox", { name: "OpenRouter API key kept for this browser session" });
+  await expect(saved).toBeChecked();
+  await saved.click();
+  await expect(keyInput).toBeVisible();
+  await expect(saved).toBeHidden();
+});
+
+test("keeps unsupported synthesis options collapsed by default", async ({ page }) => {
+  const languageBox = await page.getByLabel("Language", { exact: true }).boundingBox();
+  const segmentBox = await page.getByLabel("Segment size", { exact: true }).boundingBox();
+  expect(languageBox).not.toBeNull();
+  expect(segmentBox).not.toBeNull();
+  expect(Math.abs(languageBox!.y - segmentBox!.y)).toBeLessThan(1);
+  expect(Math.abs(languageBox!.height - segmentBox!.height)).toBeLessThan(1);
+
+  const unavailable = page.locator("details.unavailable-capabilities");
+  await expect(unavailable).not.toHaveAttribute("open", "");
+  await expect(page.getByLabel("Optimize first audio chunk")).toBeHidden();
+  await unavailable.getByText("Unavailable options").click();
+  await expect(page.getByLabel("Optimize first audio chunk")).toBeVisible();
 });
 
 test("matches the visual-parity baseline", async ({ page }) => {
@@ -58,6 +87,14 @@ test("mocked WebSocket events drive narration progress and completion", async ({
   await expect(page.getByText("1 / 1 segments")).toBeVisible();
   await expect(page.getByText("Narration fully generated. Continuous MP3 ready.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Download MP3/ })).toBeEnabled();
+});
+
+test("refreshes the selected provider balance after a segment completes", async ({ page }) => {
+  await page.getByLabel("OpenRouter API key").fill("test-key");
+  await expect(page.getByLabel("Provider balance")).toContainText("10.00");
+  await page.getByLabel("Book or chapter text").fill("Hello world");
+  await page.getByRole("button", { name: "Start narration" }).click();
+  await expect(page.getByLabel("Provider balance")).toContainText("9.00");
 });
 
 test("makes partial stitched audio downloadable before completion and after stop", async ({ page }) => {

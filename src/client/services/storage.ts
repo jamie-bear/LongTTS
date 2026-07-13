@@ -5,7 +5,6 @@ export const STORAGE_KEYS = {
   provider: "ttsProvider",
   openrouterModel: "openrouterModel",
   minimaxModel: "minimaxModel",
-  openrouterVoiceClones: "openrouterVoiceClones",
   minimaxVoiceClones: "minimaxVoiceClones"
 } as const;
 
@@ -27,7 +26,7 @@ export function writeCredential(provider: ProviderId, value: string, remember: b
   else sessionStorage.removeItem(PROVIDERS[provider].storageKey);
 }
 
-export function readVoiceClones(key: "openrouterVoiceClones" | "minimaxVoiceClones"): VoiceClone[] {
+export function readVoiceClones(key: "minimaxVoiceClones"): VoiceClone[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEYS[key]) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter((voice): voice is VoiceClone => Boolean(voice && typeof voice === "object" && "id" in voice)) : [];
@@ -36,6 +35,6 @@ export function readVoiceClones(key: "openrouterVoiceClones" | "minimaxVoiceClon
   }
 }
 
-export function writeVoiceClones(key: "openrouterVoiceClones" | "minimaxVoiceClones", voices: VoiceClone[]) {
+export function writeVoiceClones(key: "minimaxVoiceClones", voices: VoiceClone[]) {
   localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(voices));
 }

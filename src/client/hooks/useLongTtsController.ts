@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import { activeSegmentLimits, isOpenRouterPcmModel, isVoxtralModel, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../config/providers";
+import { activeSegmentLimits, isOpenRouterPcmModel, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../config/providers";
 import { api, fileToBase64 } from "../services/apiClient";
 import { AudioEngine } from "../services/audioEngine";
 import { NarrationSession } from "../services/narrationSession";
@@ -7,7 +7,6 @@ import { STORAGE_KEYS, writeCredential, writeVoiceClones } from "../services/sto
 import { appReducer, createInitialState } from "../state/appState";
 import type { NarrationOptions, ProviderId, SelectOption, ServerEvent, VoiceClone } from "../types/contracts";
 
-const MAX_OPENROUTER_SAMPLE_BYTES = 4 * 1024 * 1024;
 const MAX_MINIMAX_SAMPLE_BYTES = 20 * 1024 * 1024;
 
 export const SAMPLE_TEXT = `Chapter One
@@ -28,6 +27,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const sessionRef = useRef<NarrationSession | null>(null);
   const discoveryAbortRef = useRef<AbortController | null>(null);
+  const balanceRequestRef = useRef(0);
   stateRef.current = state;
 
   const setStatus = useCallback((status: string) => dispatch({ type: "patch", patch: { status } }), []);
@@ -72,6 +72,35 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     window.addEventListener("message", handleMessage);
     return () => { controller.abort(); window.removeEventListener("message", handleMessage); };
   }, [refreshGoogle, setStatus]);
+
+  const refreshBalance = useCallback(async (signal?: AbortSignal) => {
+    const current = stateRef.current;
+    const provider = current.provider;
+    const apiKey = current.credentials[provider].trim();
+    const requestId = ++balanceRequestRef.current;
+    if (!PROVIDERS[provider].supportsBalance) return;
+    if (!apiKey) {
+      dispatch({ type: "patch", patch: { providerBalance: null, balanceLoading: false, balanceError: "" } });
+      return;
+    }
+    dispatch({ type: "patch", patch: { balanceLoading: true, balanceError: "" } });
+    try {
+      const providerBalance = await api.providerBalance(provider, apiKey, signal);
+      const latest = stateRef.current;
+      if (signal?.aborted || requestId !== balanceRequestRef.current || latest.provider !== provider || latest.credentials[provider].trim() !== apiKey) return;
+      dispatch({ type: "patch", patch: { providerBalance, balanceLoading: false, balanceError: "" } });
+    } catch (error) {
+      const latest = stateRef.current;
+      if (signal?.aborted || requestId !== balanceRequestRef.current || latest.provider !== provider || latest.credentials[provider].trim() !== apiKey) return;
+      dispatch({ type: "patch", patch: { providerBalance: null, balanceLoading: false, balanceError: errorMessage(error) } });
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => void refreshBalance(controller.signal), state.credentials[state.provider] ? 450 : 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [refreshBalance, state.credentials, state.provider]);
 
   useEffect(() => {
     discoveryAbortRef.current?.abort();
@@ -122,15 +151,12 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     let options: SelectOption[];
     if (state.provider === "resemble") options = state.resembleVoices.length ? state.resembleVoices.map((voice) => ({ value: voice.id, label: voice.languages?.[0] ? `${voice.name} (${voice.languages[0]})` : voice.name, gender: voice.gender })) : providerConfig.voices;
     else if (state.provider === "minimax") options = state.minimaxVoices.length ? state.minimaxVoices.map((voice) => ({ value: voice.id, label: voice.model ? `${voice.name} (${voice.model})` : voice.name, gender: voice.gender })) : providerConfig.voices;
-    else if (state.provider === "openrouter" && isVoxtralModel(state.openrouterModel)) {
-      const clones = state.openrouterClones.map((voice) => ({ value: `voice_id:${voice.id}`, label: `${voice.name}${voice.languages?.length ? ` (${voice.languages.join(", ")})` : ""} · clone`, gender: voice.gender }));
-      options = clones.length ? [...openrouterBaseVoices, ...clones] : openrouterBaseVoices;
-    } else options = state.provider === "openrouter" ? openrouterBaseVoices : providerConfig.voices;
+    else options = state.provider === "openrouter" ? openrouterBaseVoices : providerConfig.voices;
     return sortVoiceOptions(options).map((option) => {
       const icon = voiceGenderIcon(option.gender);
       return icon ? { ...option, label: `${icon}  ${option.label}` } : option;
     });
-  }, [openrouterBaseVoices, providerConfig.voices, state.minimaxVoices, state.openrouterClones, state.openrouterModel, state.provider, state.resembleVoices]);
+  }, [openrouterBaseVoices, providerConfig.voices, state.minimaxVoices, state.provider, state.resembleVoices]);
 
   const hasVoiceGenderMetadata = useMemo(() => voiceOptions.some((option) => Boolean(option.gender)), [voiceOptions]);
 
@@ -162,40 +188,6 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     sessionStorage.setItem(STORAGE_KEYS.minimaxModel, model);
     dispatch({ type: "patch", patch: { minimaxModel: model } });
   }, []);
-
-  const saveOpenRouterClone = useCallback(async (values: { name: string; languages: string; gender: string; file?: File }) => {
-    const current = stateRef.current;
-    const key = current.credentials.openrouter.trim();
-    if (!key) return setStatus("Add your OpenRouter API key before managing Voxtral voice clones.");
-    if (!values.name.trim()) return setStatus("Name the voice clone first.");
-    const selectedId = current.voice.startsWith("voice_id:") ? current.voice.slice(9) : "";
-    const existing = current.openrouterClones.find((voice) => voice.id === selectedId);
-    if (!existing && !values.file) return setStatus("Choose reference audio to create a voice clone.");
-    if (values.file && values.file.size > MAX_OPENROUTER_SAMPLE_BYTES) return setStatus("Reference audio must be 4 MB or smaller for local saved clones.");
-    dispatch({ type: "patch", patch: { operationBusy: true } });
-    try {
-      const fallbackVoice = (current.openrouterVoiceOptions[current.openrouterModel] || []).find((option) => option.value && !option.disabled)?.value || "alloy";
-      const clone: VoiceClone = {
-        id: selectedId || `local-${Date.now()}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`,
-        name: values.name.trim(), languages: values.languages.split(",").map((item) => item.trim()).filter(Boolean), gender: values.gender,
-        sampleAudio: values.file ? await fileToBase64(values.file) : existing?.sampleAudio || "",
-        sampleFilename: values.file?.name || existing?.sampleFilename || "sample.wav", baseVoice: existing?.baseVoice || fallbackVoice
-      };
-      const clones = [clone, ...current.openrouterClones.filter((voice) => voice.id !== clone.id)];
-      writeVoiceClones("openrouterVoiceClones", clones);
-      dispatch({ type: "patch", patch: { openrouterClones: clones, voice: `voice_id:${clone.id}`, status: selectedId ? "Voice clone updated locally." : "Voice clone saved locally." } });
-    } catch (error) { setStatus(`Voice clone save failed: ${errorMessage(error)}`); }
-    finally { dispatch({ type: "patch", patch: { operationBusy: false } }); }
-  }, [setStatus]);
-
-  const deleteOpenRouterClone = useCallback(() => {
-    const current = stateRef.current;
-    const voiceId = current.voice.startsWith("voice_id:") ? current.voice.slice(9) : "";
-    if (!voiceId) return setStatus("Select a saved voice clone to delete.");
-    const clones = current.openrouterClones.filter((voice) => voice.id !== voiceId);
-    writeVoiceClones("openrouterVoiceClones", clones);
-    dispatch({ type: "patch", patch: { openrouterClones: clones, voice: "alloy", status: "Voice clone deleted locally." } });
-  }, [setStatus]);
 
   const saveMinimaxClone = useCallback(async (values: { name: string; previewText: string; languageModel: string; promptText: string; validationText: string; source?: File; prompt?: File }) => {
     const current = stateRef.current;
@@ -248,6 +240,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     } else if (event.type === "segmentDone") {
       audioEngineRef.current?.finishSegment(event.index);
       dispatch({ type: "patch", patch: { currentSegment: event.index, totalSegments: event.totalSegments, progress: (event.index / event.totalSegments) * 100, status: `Buffered segment ${event.index}.` } });
+      void refreshBalance();
     } else if (event.type === "complete") {
       const stitchedAudio = audioEngineRef.current?.complete() || null;
       dispatch({ type: "patch", patch: { phase: "completed", progress: 100, stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `Narration fully generated. Continuous ${stitchedAudio.extension.toUpperCase()} ready.` : "Narration fully generated, but no audio was received." } });
@@ -258,7 +251,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
       const stitchedAudio = audioEngineRef.current?.snapshot() || null;
       dispatch({ type: "patch", patch: { phase: "error", stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `${event.message || "Narration failed."} Partial ${stitchedAudio.extension.toUpperCase()} is ready.` : event.message || "Narration failed." } });
     }
-  }, [setStatus]);
+  }, [refreshBalance, setStatus]);
 
   const startNarration = useCallback(async () => {
     const current = stateRef.current;
@@ -270,12 +263,10 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     if (current.provider === "openrouter" && !current.openrouterModel) return setStatus("Select an OpenRouter speech model before starting narration.");
     if ((current.provider === "resemble" || current.provider === "minimax") && !current.voice) return setStatus(`Select a ${PROVIDERS[current.provider].label} voice before starting narration.`);
     writeCredential(current.provider, apiKey, current.rememberCredential[current.provider]);
-    const selectedClone = current.voice.startsWith("voice_id:") ? current.openrouterClones.find((voice) => voice.id === current.voice.slice(9)) : undefined;
     const options: NarrationOptions = {
-      provider: current.provider, voice: selectedClone?.baseVoice || current.voice, language: current.language, speed: current.speed,
+      provider: current.provider, voice: current.voice, language: current.language, speed: current.speed,
       segmentChars: current.segmentChars, optimizeStreamingLatency: current.lowLatency, textNormalization: current.textNormalization,
-      model: current.provider === "openrouter" ? current.openrouterModel : current.provider === "minimax" ? current.minimaxModel : "",
-      voiceId: selectedClone?.id || "", voiceReferenceAudio: selectedClone?.sampleAudio || "", voiceReferenceFilename: selectedClone?.sampleFilename || ""
+      model: current.provider === "openrouter" ? current.openrouterModel : current.provider === "minimax" ? current.minimaxModel : ""
     };
     const initialPcm = current.provider === "gemini" || current.provider === "google" || current.provider === "resemble" || (current.provider === "openrouter" && isOpenRouterPcmModel(current.openrouterModel));
     audioEngineRef.current?.reset(initialPcm ? "pcm_s16le" : "mpeg");
@@ -343,7 +334,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
       loadSample: () => dispatch({ type: "patch", patch: { text: SAMPLE_TEXT } }),
       clearText: () => dispatch({ type: "patch", patch: { text: "" } }),
       loadTextFile: async (file: File) => dispatch({ type: "patch", patch: { text: await file.text(), status: `Loaded ${file.name}.` } }),
-      saveOpenRouterClone, deleteOpenRouterClone, saveMinimaxClone, deleteMinimaxClone,
+      saveMinimaxClone, deleteMinimaxClone,
       connectGoogle, disconnectGoogle, refreshGoogle, startNarration, stopNarration, download
     }
   };

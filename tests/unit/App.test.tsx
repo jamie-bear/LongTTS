@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import App from "../../src/client/App";
 
@@ -7,6 +7,7 @@ describe("LongTTS application shell", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("google-oauth/status")) return new Response(JSON.stringify({ configured: false, connected: false }), { status: 200 });
+      if (url.includes("provider/balance")) return new Response(JSON.stringify({ available: true, amount: 12.34, currency: "USD", updatedAt: "2026-07-14T10:00:00.000Z" }), { status: 200 });
       return new Response(JSON.stringify({ models: [], voices: [] }), { status: 200 });
     }));
   });
@@ -37,7 +38,34 @@ describe("LongTTS application shell", () => {
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "google" } });
     expect(screen.getByLabelText("Optimize first audio chunk")).toBeDisabled();
     expect(screen.getByLabelText("Normalize numbers and abbreviations")).toBeDisabled();
+    const unavailableOptions = screen.getByText("Unavailable options").closest("details");
+    expect(unavailableOptions).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("Unavailable options"));
+    expect(unavailableOptions).toHaveAttribute("open");
     expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByText("Google OAuth is not configured")).toBeInTheDocument());
+  });
+
+  it("shows either the API key editor or the saved-session control", async () => {
+    render(<App />);
+    const input = screen.getByLabelText("OpenRouter API key");
+    expect(input).toBeVisible();
+    expect(screen.queryByRole("checkbox", { name: /OpenRouter API key kept/ })).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Keep for session" }));
+    const remembered = screen.getByRole("checkbox", { name: /OpenRouter API key kept/ });
+    expect(remembered).toBeChecked();
+    expect(screen.queryByLabelText("OpenRouter API key")).not.toBeInTheDocument();
+    fireEvent.click(remembered);
+    expect(screen.getByLabelText("OpenRouter API key")).toHaveValue("test-key");
+    expect(screen.queryByRole("checkbox", { name: /OpenRouter API key kept/ })).not.toBeInTheDocument();
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 500)); });
+  });
+
+  it("shows an available provider balance without exposing voice-clone controls", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("OpenRouter API key"), { target: { value: "test-key" } });
+    await waitFor(() => expect(screen.getByLabelText("Provider balance")).toHaveTextContent("12.34"), { timeout: 1500 });
+    expect(screen.queryByText("Manage voice clones")).not.toBeInTheDocument();
   });
 });

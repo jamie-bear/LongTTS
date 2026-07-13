@@ -25,6 +25,7 @@ export interface ProviderConfig {
   supportsLowLatency?: boolean;
   supportsTextNormalization?: boolean;
   supportsSpeed?: boolean;
+  supportsBalance?: boolean;
   authMode: "api-key" | "google-oauth";
   voices: SelectOption[];
   languages: SelectOption[];
@@ -35,9 +36,6 @@ export interface VoiceClone {
   name: string;
   languages?: string[];
   gender?: string;
-  baseVoice?: string;
-  sampleAudio?: string;
-  sampleFilename?: string;
   model?: string;
 }
 
@@ -55,6 +53,14 @@ export interface GoogleOAuthStatus {
   error?: string;
 }
 
+export interface ProviderBalance {
+  available: boolean;
+  amount?: number;
+  currency?: string;
+  message?: string;
+  updatedAt: string;
+}
+
 export interface NarrationOptions {
   provider: ProviderId;
   voice: string;
@@ -64,9 +70,6 @@ export interface NarrationOptions {
   optimizeStreamingLatency: boolean;
   textNormalization: boolean;
   model: string;
-  voiceId: string;
-  voiceReferenceAudio: string;
-  voiceReferenceFilename: string;
 }
 
 export interface StartNarrationCommand {

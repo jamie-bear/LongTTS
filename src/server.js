@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT || 10203);
 const XAI_TTS_URL = "wss://api.x.ai/v1/tts";
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=speech";
 const OPENROUTER_TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
-const OPENROUTER_VOICES_URL = "https://openrouter.ai/api/v1/audio/voices";
+const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key";
 const GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize";
 const RESEMBLE_API_VOICES_URL = "https://app.resemble.ai/api/v2/voices";
 const RESEMBLE_SYNTHESIS_URL = "https://f.cluster.resemble.ai/synthesize";
@@ -113,8 +113,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (url.pathname.startsWith("/api/openrouter/voices")) {
-      await handleOpenRouterVoices(req, res, url.pathname);
+    if (url.pathname === "/api/provider/balance") {
+      await handleProviderBalance(req, res);
       return;
     }
 
@@ -267,7 +267,7 @@ async function handleOpenRouterModels(req, res) {
   }
 }
 
-async function handleOpenRouterVoices(req, res, pathname) {
+async function handleProviderBalance(req, res) {
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json; charset=utf-8", Allow: "POST" });
     res.end(JSON.stringify({ error: "Method not allowed" }));
@@ -276,9 +276,16 @@ async function handleOpenRouterVoices(req, res, pathname) {
 
   let body;
   try {
-    body = await readJsonRequest(req, 24 * 1024 * 1024);
+    body = await readJsonRequest(req, 16_384);
   } catch (error) {
     sendJson(res, 400, { error: error.message });
+    return;
+  }
+
+  const provider = String(body.provider || "").trim();
+  const updatedAt = new Date().toISOString();
+  if (provider !== "openrouter") {
+    sendJson(res, 200, { available: false, message: "This provider does not expose a balance through its synthesis credential.", updatedAt });
     return;
   }
 
@@ -289,59 +296,26 @@ async function handleOpenRouterVoices(req, res, pathname) {
   }
 
   try {
-    if (pathname === "/api/openrouter/voices") {
-      const parsed = await requestOpenRouterJson(OPENROUTER_VOICES_URL, { apiKey });
-      sendJson(res, 200, { voices: normalizeOpenRouterVoices(parsed) });
+    const response = await fetch(OPENROUTER_KEY_URL, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "X-Title": "LongTTS"
+      }
+    });
+    const text = await response.text().catch(() => "");
+    const parsed = parseJsonText(text);
+    if (!response.ok) throw new Error(parsed?.error?.message || parsed?.message || summarizeNonJsonResponse(text, response));
+    if (!parsed) throw new Error(`OpenRouter returned ${describeContentType(response)} instead of JSON.`);
+    const rawRemaining = parsed?.data?.limit_remaining;
+    const amount = rawRemaining === null || rawRemaining === undefined || rawRemaining === "" ? null : Number(rawRemaining);
+    if (!Number.isFinite(amount)) {
+      sendJson(res, 200, { available: false, message: "This key has no credit limit; its account balance is not exposed to this API key.", updatedAt });
       return;
     }
-
-    if (pathname === "/api/openrouter/voices/create") {
-      const payload = buildOpenRouterVoicePayload(body, true);
-      const parsed = await requestOpenRouterJson(OPENROUTER_VOICES_URL, { apiKey, method: "POST", payload });
-      sendJson(res, 200, { voice: normalizeOpenRouterVoice(parsed?.data || parsed) });
-      return;
-    }
-
-    if (pathname === "/api/openrouter/voices/update") {
-      const voiceId = sanitizeVoiceId(body.voiceId);
-      const payload = buildOpenRouterVoicePayload(body, false);
-      const parsed = await requestOpenRouterJson(`${OPENROUTER_VOICES_URL}/${encodeURIComponent(voiceId)}`, { apiKey, method: "PATCH", payload });
-      sendJson(res, 200, { voice: normalizeOpenRouterVoice(parsed?.data || parsed) });
-      return;
-    }
-
-    if (pathname === "/api/openrouter/voices/delete") {
-      const voiceId = sanitizeVoiceId(body.voiceId);
-      await requestOpenRouterJson(`${OPENROUTER_VOICES_URL}/${encodeURIComponent(voiceId)}`, { apiKey, method: "DELETE" });
-      sendJson(res, 200, { ok: true });
-      return;
-    }
-
-    sendJson(res, 404, { error: "Unknown OpenRouter voice endpoint." });
+    sendJson(res, 200, { available: true, amount, currency: "USD", updatedAt });
   } catch (error) {
-    sendJson(res, 502, { error: `OpenRouter voice request failed: ${error.message}` });
+    sendJson(res, 502, { error: `OpenRouter balance request failed: ${error.message}` });
   }
-}
-
-async function requestOpenRouterJson(url, { apiKey, method = "GET", payload = null }) {
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Title": "LongTTS"
-    },
-    body: payload ? JSON.stringify(payload) : undefined
-  });
-  const text = await response.text().catch(() => "");
-  const parsed = parseJsonText(text);
-  if (!response.ok) {
-    throw new Error(parsed?.error?.message || parsed?.message || summarizeNonJsonResponse(text, response));
-  }
-  if (!parsed) {
-    throw new Error(`OpenRouter returned ${describeContentType(response)} instead of JSON: ${summarizeNonJsonResponse(text, response)}`);
-  }
-  return parsed;
 }
 
 function parseJsonText(text) {
@@ -362,42 +336,10 @@ function summarizeNonJsonResponse(text, response) {
   return compact ? compact.slice(0, 240) : `${response.status} ${response.statusText}`;
 }
 
-function buildOpenRouterVoicePayload(body, requireSample) {
-  const payload = {
-    name: String(body.name || "").trim(),
-    languages: Array.isArray(body.languages) ? body.languages.map((language) => String(language).trim()).filter(Boolean) : [],
-    gender: String(body.gender || "").trim()
-  };
-  if (!payload.name) throw new Error("Voice name is required.");
-  if (!payload.gender) delete payload.gender;
-  if (!payload.languages.length) delete payload.languages;
-  if (body.sampleAudio) {
-    payload.sample_audio = String(body.sampleAudio || "").trim();
-    payload.sample_filename = String(body.sampleFilename || "sample.wav").trim();
-  }
-  if (requireSample && !payload.sample_audio) throw new Error("Reference audio is required to create a voice clone.");
-  return payload;
-}
-
 function sanitizeVoiceId(value) {
   const voiceId = String(value || "").trim();
   if (!voiceId) throw new Error("Voice ID is required.");
   return voiceId;
-}
-
-function normalizeOpenRouterVoices(parsed) {
-  const items = Array.isArray(parsed?.data) ? parsed.data : Array.isArray(parsed?.voices) ? parsed.voices : Array.isArray(parsed) ? parsed : [];
-  return items.map(normalizeOpenRouterVoice).filter((voice) => voice.id);
-}
-
-function normalizeOpenRouterVoice(raw) {
-  return {
-    id: String(raw?.id || raw?.voice_id || ""),
-    name: String(raw?.name || raw?.slug || raw?.id || ""),
-    languages: Array.isArray(raw?.languages) ? raw.languages.map(String) : [],
-    gender: String(raw?.gender || ""),
-    updatedAt: String(raw?.updated_at || raw?.updatedAt || "")
-  };
 }
 
 async function readJsonRequest(req, limitBytes) {
@@ -1486,11 +1428,7 @@ function sanitizeOptions(raw) {
           : provider === "minimax"
             ? ""
             : "eve";
-  const voiceId = provider === "openrouter" ? String(raw.voiceId || "").trim() : "";
-  const rawVoice = String(raw.voice || "").startsWith("voice_id:") ? defaultVoice : raw.voice;
-  const voice = sanitizeVoice(rawVoice, defaultVoice, provider);
-  const voiceReferenceAudio = provider === "openrouter" ? sanitizeBase64Audio(raw.voiceReferenceAudio) : "";
-  const voiceReferenceFilename = provider === "openrouter" ? String(raw.voiceReferenceFilename || "").trim().slice(0, 160) : "";
+  const voice = sanitizeVoice(raw.voice, defaultVoice, provider);
   const language = sanitizeLanguage(raw.language, provider, voice);
   const speed = clamp(Number(raw.speed || 1), 0.7, 1.5);
   const optimizeStreamingLatency = raw.optimizeStreamingLatency ? 1 : 0;
@@ -1513,9 +1451,6 @@ function sanitizeOptions(raw) {
     provider,
     model,
     voice,
-    voiceId,
-    voiceReferenceAudio,
-    voiceReferenceFilename,
     language: language || "auto",
     speed,
     segmentChars,
@@ -1717,10 +1652,6 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
       model: options.model,
       input: requiresOpenRouterPcm(options.model) ? buildGeminiPrompt(text, options) : text,
       voice: options.voice,
-      ...(options.voiceReferenceAudio ? {
-        ref_audio: options.voiceReferenceAudio,
-        ...(options.voiceReferenceFilename ? { ref_audio_filename: options.voiceReferenceFilename } : {})
-      } : options.voiceId ? { voice_id: options.voiceId } : {}),
       response_format: getOpenRouterResponseFormat(options.model),
       speed: options.speed
     }),

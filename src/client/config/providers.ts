@@ -36,7 +36,7 @@ const providers: ProviderConfig[] = [
   {
     id: "openrouter", label: "OpenRouter: Various Models", storageKey: "openrouterApiKey",
     credentialLabel: "OpenRouter API key", credentialPlaceholder: "sk-or-...", authMode: "api-key",
-    defaultVoice: "alloy", defaultLanguage: "auto", defaultSegmentChars: 2500, maxSegmentChars: 12000, supportsSpeed: true,
+    defaultVoice: "alloy", defaultLanguage: "auto", defaultSegmentChars: 2500, maxSegmentChars: 12000, supportsSpeed: true, supportsBalance: true,
     voices: [{ value: "", label: "Select a model to load voices" }], languages: autoOnly
   },
   {
@@ -81,7 +81,6 @@ export const SEGMENT_OPTIONS = optionList([["500", "Very short"], ["1200", "Shor
 export const MINIMAX_MODELS = ["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-02-turbo", "speech-01-hd", "speech-01-turbo"];
 
 export const isProviderId = (value: string | null): value is ProviderId => Boolean(value && value in PROVIDERS);
-export const isVoxtralModel = (modelId: string) => /voxtral/i.test(modelId);
 export const isOpenRouterPcmModel = (modelId: string) => /(^|[/:-])(?:google|gemini)(?:[/:-]|$)/i.test(modelId);
 
 export function sortVoiceOptions(options: SelectOption[]) {

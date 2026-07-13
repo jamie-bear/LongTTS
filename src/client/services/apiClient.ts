@@ -1,4 +1,4 @@
-import type { GoogleOAuthStatus, OpenRouterModel, VoiceClone } from "../types/contracts";
+import type { GoogleOAuthStatus, OpenRouterModel, ProviderBalance, ProviderId, VoiceClone } from "../types/contracts";
 
 async function request<T>(url: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, { ...init, signal, headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -16,10 +16,7 @@ const post = <T>(url: string, body: unknown, signal?: AbortSignal) => request<T>
 
 export const api = {
   openRouterModels: (apiKey: string, signal?: AbortSignal) => post<{ models: OpenRouterModel[] }>("/api/openrouter/models", { apiKey }, signal),
-  openRouterVoices: (apiKey: string, signal?: AbortSignal) => post<{ voices: VoiceClone[] }>("/api/openrouter/voices", { apiKey }, signal),
-  createOpenRouterVoice: (payload: Record<string, unknown>, signal?: AbortSignal) => post<{ voice: VoiceClone }>("/api/openrouter/voices/create", payload, signal),
-  updateOpenRouterVoice: (payload: Record<string, unknown>, signal?: AbortSignal) => post<{ voice: VoiceClone }>("/api/openrouter/voices/update", payload, signal),
-  deleteOpenRouterVoice: (apiKey: string, voiceId: string, signal?: AbortSignal) => post<{ ok: boolean }>("/api/openrouter/voices/delete", { apiKey, voiceId }, signal),
+  providerBalance: (provider: ProviderId, apiKey: string, signal?: AbortSignal) => post<ProviderBalance>("/api/provider/balance", { provider, apiKey }, signal),
   minimaxVoices: (apiKey: string, signal?: AbortSignal) => post<{ voices: VoiceClone[] }>("/api/minimax/voices", { apiKey }, signal),
   createMinimaxVoice: (payload: Record<string, unknown>, signal?: AbortSignal) => post<{ voice: VoiceClone }>("/api/minimax/voices/create", payload, signal),
   deleteMinimaxVoice: (apiKey: string, voiceId: string, signal?: AbortSignal) => post<{ ok: boolean }>("/api/minimax/voices/delete", { apiKey, voiceId }, signal),

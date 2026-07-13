@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MINIMAX_LANGUAGES, MINIMAX_MODELS, PROVIDER_ORDER, PROVIDERS, isVoxtralModel } from "../config/providers";
+import { MINIMAX_LANGUAGES, MINIMAX_MODELS, PROVIDER_ORDER, PROVIDERS } from "../config/providers";
 import type { useLongTtsController } from "../hooks/useLongTtsController";
 import { Button, Checkbox, FieldPanel } from "./ui/Controls";
 import { Icon } from "./ui/Icon";
@@ -9,17 +9,25 @@ type Controller = ReturnType<typeof useLongTtsController>;
 export function ProviderSetup({ controller }: { controller: Controller }) {
   const { state, providerConfig, actions } = controller;
   const usesKey = providerConfig.authMode === "api-key";
+  const credential = state.credentials[state.provider];
+  const remembered = state.rememberCredential[state.provider];
   return <div className="provider-setup">
     <div className="field"><label className="field-label" htmlFor="provider">Provider</label>
       <select id="provider" value={state.provider} onChange={(event) => actions.selectProvider(event.target.value as keyof typeof PROVIDERS)}>
         {PROVIDER_ORDER.map((id) => <option key={id} value={id}>{PROVIDERS[id].label}</option>)}
       </select></div>
       {usesKey && <div className="credential-block">
-        <label id="apiKeyLabel" className="field" htmlFor="apiKey"><span className="field-label">{providerConfig.credentialLabel}</span>
-        <input id="apiKey" type="password" autoComplete="off" placeholder={providerConfig.credentialPlaceholder} value={state.credentials[state.provider]} onChange={(event) => actions.setCredential(event.target.value)} />
-        </label>
-        <Checkbox id="rememberKey" label="Keep for this browser session" checked={state.rememberCredential[state.provider]} onChange={(event) => actions.setRememberCredential(event.target.checked)} />
+        {remembered ? <div className="credential-saved">
+          <Icon name="check" />
+          <Checkbox id="rememberKey" label={`${providerConfig.credentialLabel} kept for this browser session`} checked onChange={(event) => actions.setRememberCredential(event.target.checked)} />
+        </div> : <div className="credential-entry">
+          <label id="apiKeyLabel" className="field" htmlFor="apiKey"><span className="field-label">{providerConfig.credentialLabel}</span>
+            <input id="apiKey" type="password" autoComplete="off" placeholder={providerConfig.credentialPlaceholder} value={credential} onChange={(event) => actions.setCredential(event.target.value)} />
+          </label>
+          <Button type="button" className="remember-action" disabled={!credential.trim()} onClick={() => actions.setRememberCredential(true)}><Icon name="key" />Keep for session</Button>
+        </div>}
       </div>}
+    {providerConfig.supportsBalance && <ProviderBalance controller={controller} />}
 
     {state.provider === "openrouter" && <OpenRouterSetup controller={controller} />}
     {state.provider === "minimax" && <MiniMaxSetup controller={controller} />}
@@ -39,33 +47,24 @@ function OpenRouterSetup({ controller }: { controller: Controller }) {
       </select>
       <span>{state.credentials.openrouter ? "Choose the OpenRouter speech model and voice used for narration." : "Models and voices load after your API key is entered."}</span>
     </FieldPanel>
-    {isVoxtralModel(state.openrouterModel) && <OpenRouterClonePanel controller={controller} />}
   </>;
 }
 
-function OpenRouterClonePanel({ controller }: { controller: Controller }) {
-  const { state, actions } = controller;
-  const selected = state.voice.startsWith("voice_id:") ? state.openrouterClones.find((voice) => voice.id === state.voice.slice(9)) : undefined;
-  const [name, setName] = useState("");
-  const [languages, setLanguages] = useState("");
-  const [gender, setGender] = useState("");
-  const [file, setFile] = useState<File>();
-  useEffect(() => { setName(selected?.name || ""); setLanguages(selected?.languages?.join(", ") || ""); setGender(selected?.gender || ""); }, [selected]);
-  return <details id="openrouterVoiceClonePanel" className="voice-tools-panel">
-    <summary><span><Icon name="user" />Manage voice clones</span><span>{state.openrouterClones.length} saved</span></summary>
-    <FieldPanel className="voice-clone-panel" live>
-      <div className="voice-clone-header"><div><strong>Zero-shot voice clones</strong><span>{state.openrouterClones.length.toLocaleString()} locally saved voice clone{state.openrouterClones.length === 1 ? "" : "s"}.</span></div><Button type="button" onClick={() => actions.setCredential(state.credentials.openrouter)}><Icon name="refresh" />Refresh</Button></div>
-    <div className="voice-clone-form">
-      <label><span>Name</span><input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="Narrator voice" /></label>
-      <label><span>Language codes</span><input type="text" value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="en, fr" /></label>
-      <label><span>Gender</span><select value={gender} onChange={(event) => setGender(event.target.value)}><option value="">Unspecified</option><option value="female">Female</option><option value="male">Male</option><option value="neutral">Neutral</option></select></label>
-      <label><span>Reference audio</span><input type="file" accept="audio/*" onChange={(event) => setFile(event.target.files?.[0])} /></label>
-      <Button type="button" className="primary" disabled={state.operationBusy} onClick={() => void actions.saveOpenRouterClone({ name, languages, gender, file })}><Icon name="check" />{selected ? "Update voice clone" : "Create voice clone"}</Button>
-      <Button type="button" disabled={!selected || state.operationBusy} onClick={actions.deleteOpenRouterClone}><Icon name="trash" />Delete selected</Button>
-    </div>
-    <p className="voice-clone-policy">Only clone voices you have permission to use. Disclose AI-generated speech where required.</p>
-    </FieldPanel>
-  </details>;
+function ProviderBalance({ controller }: { controller: Controller }) {
+  const { state } = controller;
+  const balance = state.providerBalance;
+  const credential = state.credentials[state.provider].trim();
+  const value = !credential
+    ? "Enter an API key"
+    : state.balanceLoading
+      ? "Checking..."
+      : balance?.available && typeof balance.amount === "number"
+        ? new Intl.NumberFormat(undefined, { style: "currency", currency: balance.currency || "USD" }).format(balance.amount)
+        : "Unavailable";
+  const detail = state.balanceError || balance?.message || (balance?.updatedAt ? `Updated ${new Date(balance.updatedAt).toLocaleTimeString()}` : "Refreshes after every generated segment.");
+  return <div className="provider-balance" aria-label="Provider balance" aria-live="polite">
+    <span>Available balance</span><strong>{value}</strong><small>{detail}</small>
+  </div>;
 }
 
 function MiniMaxSetup({ controller }: { controller: Controller }) {

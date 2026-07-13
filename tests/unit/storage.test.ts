@@ -11,9 +11,9 @@ describe("storage compatibility", () => {
   });
 
   it("round-trips local clone metadata and tolerates invalid JSON", () => {
-    writeVoiceClones("openrouterVoiceClones", [{ id: "voice-1", name: "Narrator" }]);
-    expect(readVoiceClones("openrouterVoiceClones")).toEqual([{ id: "voice-1", name: "Narrator" }]);
-    localStorage.setItem("openrouterVoiceClones", "not-json");
-    expect(readVoiceClones("openrouterVoiceClones")).toEqual([]);
+    writeVoiceClones("minimaxVoiceClones", [{ id: "voice-1", name: "Narrator" }]);
+    expect(readVoiceClones("minimaxVoiceClones")).toEqual([{ id: "voice-1", name: "Narrator" }]);
+    localStorage.setItem("minimaxVoiceClones", "not-json");
+    expect(readVoiceClones("minimaxVoiceClones")).toEqual([]);
   });
 });

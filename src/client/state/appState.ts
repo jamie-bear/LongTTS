@@ -1,6 +1,6 @@
 import { PROVIDERS, activeSegmentLimits } from "../config/providers";
 import { readCredentials, readProvider, readVoiceClones, STORAGE_KEYS } from "../services/storage";
-import type { GoogleOAuthStatus, NarrationPhase, OpenRouterModel, ProviderId, SelectOption, StitchedAudio, VoiceClone } from "../types/contracts";
+import type { GoogleOAuthStatus, NarrationPhase, OpenRouterModel, ProviderBalance, ProviderId, SelectOption, StitchedAudio, VoiceClone } from "../types/contracts";
 
 export interface AppState {
   provider: ProviderId;
@@ -17,11 +17,13 @@ export interface AppState {
   openrouterModel: string;
   openrouterModels: OpenRouterModel[];
   openrouterVoiceOptions: Record<string, SelectOption[]>;
-  openrouterClones: VoiceClone[];
   minimaxModel: string;
   minimaxVoices: VoiceClone[];
   resembleVoices: VoiceClone[];
   googleOAuth: GoogleOAuthStatus;
+  providerBalance: ProviderBalance | null;
+  balanceLoading: boolean;
+  balanceError: string;
   phase: NarrationPhase;
   status: string;
   currentSegment: number;
@@ -57,11 +59,13 @@ export function createInitialState(): AppState {
     openrouterModel: sessionStorage.getItem(STORAGE_KEYS.openrouterModel) ?? "",
     openrouterModels: [],
     openrouterVoiceOptions: {},
-    openrouterClones: readVoiceClones("openrouterVoiceClones"),
     minimaxModel: sessionStorage.getItem(STORAGE_KEYS.minimaxModel) ?? "speech-2.8-hd",
     minimaxVoices: readVoiceClones("minimaxVoiceClones"),
     resembleVoices: [],
     googleOAuth: { configured: false, connected: false, redirectUri: "", updatedAt: null },
+    providerBalance: null,
+    balanceLoading: false,
+    balanceError: "",
     phase: "idle",
     status: "Idle",
     currentSegment: 0,
@@ -103,6 +107,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         voice: config.defaultVoice,
         language: config.defaultLanguage,
         segmentChars,
+        providerBalance: null,
+        balanceLoading: false,
+        balanceError: "",
         status: state.phase === "idle" ? "Idle" : state.status
       };
     }

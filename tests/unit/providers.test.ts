@@ -1,4 +1,4 @@
-import { activeSegmentLimits, isOpenRouterPcmModel, isVoxtralModel, PROVIDER_ORDER, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../../src/client/config/providers";
+import { activeSegmentLimits, isOpenRouterPcmModel, PROVIDER_ORDER, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../../src/client/config/providers";
 
 describe("provider registry", () => {
   it("contains every supported provider, including the restored Gemini option", () => {
@@ -20,10 +20,5 @@ describe("provider registry", () => {
     expect(voiceGenderIcon("female")).toBe("♀");
     expect(voiceGenderIcon("male")).toBe("♂");
     expect(voiceGenderIcon("neutral")).toBe("⚥");
-  });
-
-  it("recognizes Voxtral models without coupling the view to model IDs", () => {
-    expect(isVoxtralModel("mistral/voxtral-mini-tts-2603")).toBe(true);
-    expect(isVoxtralModel("openai/gpt-audio")).toBe(false);
   });
 });
