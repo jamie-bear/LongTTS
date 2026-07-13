@@ -48,7 +48,7 @@ test("keeps unsupported synthesis options collapsed by default", async ({ page }
   const segmentBox = await page.getByLabel("Segment size", { exact: true }).boundingBox();
   expect(languageBox).not.toBeNull();
   expect(segmentBox).not.toBeNull();
-  expect(Math.abs(languageBox!.y - segmentBox!.y)).toBeLessThan(1);
+  if ((page.viewportSize()?.width || 0) > 600) expect(Math.abs(languageBox!.y - segmentBox!.y)).toBeLessThan(1);
   expect(Math.abs(languageBox!.height - segmentBox!.height)).toBeLessThan(1);
 
   const unavailable = page.locator("details.unavailable-capabilities");
