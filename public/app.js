@@ -13,6 +13,19 @@ const elements = {
   openrouterModel: document.querySelector("#openrouterModel"),
   openrouterModelHint: document.querySelector("#openrouterModelHint"),
   openrouterVoiceClonePanel: document.querySelector("#openrouterVoiceClonePanel"),
+  minimaxModelPanel: document.querySelector("#minimaxModelPanel"),
+  minimaxModel: document.querySelector("#minimaxModel"),
+  minimaxModelHint: document.querySelector("#minimaxModelHint"),
+  minimaxVoiceClonePanel: document.querySelector("#minimaxVoiceClonePanel"),
+  minimaxVoiceCloneHint: document.querySelector("#minimaxVoiceCloneHint"),
+  refreshMinimaxVoicesButton: document.querySelector("#refreshMinimaxVoicesButton"),
+  minimaxVoiceCloneName: document.querySelector("#minimaxVoiceCloneName"),
+  minimaxVoiceCloneText: document.querySelector("#minimaxVoiceCloneText"),
+  minimaxVoiceClonePromptText: document.querySelector("#minimaxVoiceClonePromptText"),
+  minimaxVoiceCloneAudio: document.querySelector("#minimaxVoiceCloneAudio"),
+  minimaxVoiceClonePromptAudio: document.querySelector("#minimaxVoiceClonePromptAudio"),
+  saveMinimaxVoiceCloneButton: document.querySelector("#saveMinimaxVoiceCloneButton"),
+  deleteMinimaxVoiceCloneButton: document.querySelector("#deleteMinimaxVoiceCloneButton"),
   openrouterVoiceCloneHint: document.querySelector("#openrouterVoiceCloneHint"),
   refreshOpenrouterVoicesButton: document.querySelector("#refreshOpenrouterVoicesButton"),
   voiceCloneName: document.querySelector("#voiceCloneName"),
@@ -152,6 +165,20 @@ const PROVIDERS = {
     voices: [{ value: "", label: "Select a model to load voices" }],
     languages: [{ value: "auto", label: "Auto" }]
   },
+
+  minimax: {
+    label: "MiniMax: Custom Voices",
+    storageKey: "minimaxApiKey",
+    credentialLabel: "MiniMax API key",
+    credentialPlaceholder: "MiniMax API key",
+    defaultVoice: "",
+    defaultLanguage: "auto",
+    defaultSegmentChars: 4500,
+    maxSegmentChars: 10000,
+    lowLatencyLabel: "",
+    voices: [{ value: "", label: "Create or refresh MiniMax custom voices" }],
+    languages: [{ value: "auto", label: "Auto" }]
+  },
   resemble: {
     label: "Resemble.ai: Custom Voices",
     storageKey: "resembleApiKey",
@@ -191,6 +218,7 @@ const PROVIDERS = {
 };
 
 const OPENROUTER_VOICE_CLONES_STORAGE_KEY = "openrouterVoiceClones";
+const MINIMAX_VOICE_CLONES_STORAGE_KEY = "minimaxVoiceClones";
 const MAX_VOICE_CLONE_AUDIO_BYTES = 4 * 1024 * 1024;
 
 const SAMPLE_TEXT = `Chapter One
@@ -210,14 +238,16 @@ const state = {
     xai: "",
     google: "",
     openrouter: "",
-    resemble: ""
+    resemble: "",
+    minimax: ""
   },
   segmentCharsByProvider: {
     gemini: PROVIDERS.gemini.defaultSegmentChars,
     xai: PROVIDERS.xai.defaultSegmentChars,
     google: PROVIDERS.google.defaultSegmentChars,
     openrouter: 4500,
-    resemble: PROVIDERS.resemble.defaultSegmentChars
+    resemble: PROVIDERS.resemble.defaultSegmentChars,
+    minimax: PROVIDERS.minimax.defaultSegmentChars
   },
   openrouterModels: [],
   openrouterVoicesByModel: {},
@@ -225,6 +255,8 @@ const state = {
   openrouterVoiceClones: [],
   openrouterModelLoadTimer: null,
   resembleVoices: [],
+  minimaxVoices: [],
+  minimaxModel: sessionStorage.getItem("minimaxModel") || "speech-2.8-hd",
   resembleVoiceLoadTimer: null,
   googleOAuth: {
     configured: false,
@@ -265,6 +297,7 @@ function init() {
   state.credentialsByProvider.xai = sessionStorage.getItem(PROVIDERS.xai.storageKey) || "";
   state.credentialsByProvider.openrouter = sessionStorage.getItem(PROVIDERS.openrouter.storageKey) || "";
   state.credentialsByProvider.resemble = sessionStorage.getItem(PROVIDERS.resemble.storageKey) || "";
+  state.credentialsByProvider.minimax = sessionStorage.getItem(PROVIDERS.minimax.storageKey) || "";
   state.openrouterModel = sessionStorage.getItem("openrouterModel") || "";
   sessionStorage.removeItem(PROVIDERS.google.storageKey);
   state.provider = sanitizeProvider(sessionStorage.getItem("ttsProvider"));
@@ -294,6 +327,10 @@ function init() {
   elements.refreshOpenrouterVoicesButton.addEventListener("click", () => loadOpenRouterVoiceClones());
   elements.saveVoiceCloneButton.addEventListener("click", saveOpenRouterVoiceClone);
   elements.deleteVoiceCloneButton.addEventListener("click", deleteSelectedOpenRouterVoiceClone);
+  elements.minimaxModel.addEventListener("change", handleMinimaxModelChange);
+  elements.refreshMinimaxVoicesButton.addEventListener("click", () => loadMinimaxVoices());
+  elements.saveMinimaxVoiceCloneButton.addEventListener("click", saveMinimaxVoiceClone);
+  elements.deleteMinimaxVoiceCloneButton.addEventListener("click", deleteSelectedMinimaxVoiceClone);
   elements.googleConnectButton.addEventListener("click", connectGoogleOAuth);
   elements.googleDisconnectButton.addEventListener("click", disconnectGoogleOAuth);
   window.addEventListener("message", handleWindowMessage);
@@ -310,6 +347,9 @@ function init() {
   }
   if (state.provider === "resemble" && state.credentialsByProvider.resemble) {
     scheduleResembleVoicesLoad(0);
+  }
+  if (state.provider === "minimax") {
+    loadMinimaxVoices();
   }
 }
 
@@ -329,6 +369,9 @@ function handleProviderChange() {
   }
   if (state.provider === "resemble" && state.credentialsByProvider.resemble) {
     scheduleResembleVoicesLoad(0);
+  }
+  if (state.provider === "minimax") {
+    loadMinimaxVoices();
   }
 }
 
@@ -364,12 +407,15 @@ function applyProviderConfig() {
     elements.rememberKey.checked = false;
   }
   elements.lowLatencyLabel.textContent = config.lowLatencyLabel;
-  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter" || state.provider === "resemble");
-  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter" || state.provider === "resemble";
+  elements.lowLatencyLine.classList.toggle("is-hidden", state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter" || state.provider === "resemble" || state.provider === "minimax");
+  elements.lowLatency.disabled = state.provider === "gemini" || state.provider === "google" || state.provider === "openrouter" || state.provider === "resemble" || state.provider === "minimax";
   elements.textNormalizationLine.classList.toggle("is-hidden", state.provider !== "xai");
   elements.textNormalization.disabled = state.provider !== "xai";
   elements.googleAuthPanel.classList.toggle("is-hidden", state.provider !== "google");
   elements.openrouterModelPanel.classList.toggle("is-hidden", state.provider !== "openrouter");
+  elements.minimaxModelPanel.classList.toggle("is-hidden", state.provider !== "minimax");
+  elements.minimaxVoiceClonePanel.classList.toggle("is-hidden", state.provider !== "minimax");
+  elements.minimaxModel.value = state.minimaxModel;
   elements.openrouterVoiceClonePanel.classList.toggle("is-hidden", state.provider !== "openrouter" || !isVoxtralModel(state.openrouterModel));
   updateDownloadButton();
 
@@ -377,7 +423,9 @@ function applyProviderConfig() {
     ? getOpenRouterVoiceOptions(state.openrouterModel)
     : state.provider === "resemble"
       ? getResembleVoiceOptions()
-      : config.voices;
+      : state.provider === "minimax"
+        ? getMinimaxVoiceOptions()
+        : config.voices;
   populateSelect(elements.voice, voiceOptions, previousVoice, config.defaultVoice);
   populateSelect(elements.language, config.languages, previousLanguage, config.defaultLanguage);
 
@@ -414,7 +462,7 @@ function getActiveSegmentConfig(config) {
 }
 
 function sanitizeProvider(value) {
-  if (value === "xai" || value === "google" || value === "openrouter" || value === "resemble") return value;
+  if (value === "xai" || value === "google" || value === "openrouter" || value === "resemble" || value === "minimax") return value;
   return "openrouter";
 }
 
@@ -437,6 +485,102 @@ function populateSelect(select, options, preferredValue, fallbackValue) {
   select.value = hasPreferred ? preferredValue : hasFallback ? fallbackValue : options[0].value;
 }
 
+
+
+function getMinimaxVoiceOptions() {
+  return state.minimaxVoices.length
+    ? state.minimaxVoices.map((voice) => ({ value: voice.id, label: voice.model ? `${voice.name} (${voice.model})` : voice.name }))
+    : PROVIDERS.minimax.voices;
+}
+
+function handleMinimaxModelChange() {
+  state.minimaxModel = elements.minimaxModel.value || "speech-2.8-hd";
+  sessionStorage.setItem("minimaxModel", state.minimaxModel);
+}
+
+async function loadMinimaxVoices(updateSelect = true) {
+  if (state.provider !== "minimax") return;
+  state.minimaxVoices = readStoredMinimaxVoiceClones();
+  if (updateSelect) populateSelect(elements.voice, getMinimaxVoiceOptions(), elements.voice.value, state.minimaxVoices[0]?.id || "");
+  syncMinimaxVoiceCloneFormToSelection();
+  elements.minimaxVoiceCloneHint.textContent = `Loaded ${state.minimaxVoices.length.toLocaleString()} MiniMax voice clone${state.minimaxVoices.length === 1 ? "" : "s"}.`;
+}
+
+async function saveMinimaxVoiceClone() {
+  const apiKey = elements.apiKey.value.trim();
+  const [sourceFile] = elements.minimaxVoiceCloneAudio.files;
+  const [promptFile] = elements.minimaxVoiceClonePromptAudio.files;
+  const selectedVoiceId = elements.voice.value || "";
+  const name = elements.minimaxVoiceCloneName.value.trim();
+  if (!apiKey) return setStatus("Add your MiniMax API key before creating voice clones.");
+  if (!name) return setStatus("Name the MiniMax voice clone first.");
+  if (!sourceFile) return setStatus("Choose source audio to create a MiniMax voice clone.");
+  if (sourceFile.size > 20 * 1024 * 1024 || (promptFile && promptFile.size > 20 * 1024 * 1024)) return setStatus("MiniMax voice clone audio files must be 20 MB or smaller.");
+  elements.saveMinimaxVoiceCloneButton.disabled = true;
+  try {
+    const payload = {
+      apiKey,
+      name,
+      model: state.minimaxModel,
+      previewText: elements.minimaxVoiceCloneText.value.trim(),
+      promptText: elements.minimaxVoiceClonePromptText.value.trim(),
+      sourceAudio: await fileToBase64(sourceFile),
+      sourceFilename: sourceFile.name,
+      sourceContentType: sourceFile.type || "application/octet-stream",
+      promptAudio: promptFile ? await fileToBase64(promptFile) : "",
+      promptFilename: promptFile?.name || "",
+      promptContentType: promptFile?.type || "application/octet-stream"
+    };
+    const response = await fetch("/api/minimax/voices/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const body = await readJsonResponse(response);
+    if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
+    const voice = body.voice;
+    state.minimaxVoices = [voice, ...state.minimaxVoices.filter((item) => item.id !== voice.id && item.id !== selectedVoiceId)];
+    writeStoredMinimaxVoiceClones(state.minimaxVoices);
+    elements.minimaxVoiceCloneAudio.value = "";
+    elements.minimaxVoiceClonePromptAudio.value = "";
+    await loadMinimaxVoices();
+    elements.voice.value = voice.id;
+    syncMinimaxVoiceCloneFormToSelection();
+    setStatus(`MiniMax voice clone created: ${voice.name}.`);
+  } catch (error) {
+    setStatus(`MiniMax voice clone failed: ${error.message}`);
+  } finally {
+    elements.saveMinimaxVoiceCloneButton.disabled = false;
+  }
+}
+
+async function deleteSelectedMinimaxVoiceClone() {
+  const voiceId = elements.voice.value;
+  if (!voiceId) return setStatus("Select a MiniMax voice clone to remove locally.");
+  state.minimaxVoices = state.minimaxVoices.filter((voice) => voice.id !== voiceId);
+  writeStoredMinimaxVoiceClones(state.minimaxVoices);
+  await loadMinimaxVoices();
+  setStatus("MiniMax voice clone removed from this browser.");
+}
+
+function syncMinimaxVoiceCloneFormToSelection() {
+  const voice = state.minimaxVoices.find((item) => item.id === elements.voice.value);
+  elements.minimaxVoiceCloneName.value = voice?.name || "";
+  elements.saveMinimaxVoiceCloneButton.textContent = voice ? "Create replacement clone" : "Create voice clone";
+}
+
+function readStoredMinimaxVoiceClones() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MINIMAX_VOICE_CLONES_STORAGE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((voice) => voice?.id) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredMinimaxVoiceClones(voices) {
+  localStorage.setItem(MINIMAX_VOICE_CLONES_STORAGE_KEY, JSON.stringify(voices));
+}
 
 function getResembleVoiceOptions() {
   return state.resembleVoices.length
@@ -691,6 +835,9 @@ function handleVoiceChange() {
 
   if (state.provider === "openrouter") {
     syncVoiceCloneFormToSelection();
+  }
+  if (state.provider === "minimax") {
+    syncMinimaxVoiceCloneFormToSelection();
   }
 }
 
@@ -1133,7 +1280,7 @@ function readOptions() {
     segmentChars: Number(elements.segmentChars.value),
     optimizeStreamingLatency: elements.lowLatency.checked,
     textNormalization: elements.textNormalization.checked,
-    model: state.provider === "openrouter" ? elements.openrouterModel.value : "",
+    model: state.provider === "openrouter" ? elements.openrouterModel.value : state.provider === "minimax" ? elements.minimaxModel.value : "",
     voiceId: state.provider === "openrouter" ? getSelectedVoiceCloneId() : "",
     voiceReferenceAudio: state.provider === "openrouter" ? getSelectedVoiceClone()?.sampleAudio || "" : "",
     voiceReferenceFilename: state.provider === "openrouter" ? getSelectedVoiceClone()?.sampleFilename || "" : ""
