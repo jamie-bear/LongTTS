@@ -1394,6 +1394,7 @@ async function synthesizeResembleSpeech(text, options, apiKey, signal) {
       voice_uuid: options.voice,
       data: text,
       sample_rate: RESEMBLE_SAMPLE_RATE,
+      precision: "PCM_16",
       output_format: "wav"
     }),
     signal

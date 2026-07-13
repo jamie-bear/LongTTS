@@ -74,7 +74,7 @@ For xAI, this app uses the streaming TTS endpoint, `wss://api.x.ai/v1/tts`. The 
 
 For Google Cloud TTS, this app uses Cloud Text-to-Speech `text:synthesize` at `https://texttospeech.googleapis.com/v1/text:synthesize` with `voice.modelName` set to `gemini-3.1-flash-tts-preview`. Google returns one base64 LINEAR16 payload per segment; the backend removes the WAV header and forwards 24 kHz PCM audio so the browser can play and download a continuous WAV. Cloud Gemini-TTS requires principal-backed authentication plus permission to call the model endpoint; use the local OAuth connection above before starting narration.
 
-Resemble.ai uses `https://app.resemble.ai/api/v2/voices` to list ready custom voices after a Resemble.ai API key is entered, then calls `https://f.cluster.resemble.ai/synthesize` with the selected `voice_uuid`. Resemble.ai returns base64 WAV audio; the backend forwards the decoded PCM payload so the browser can play and download a continuous WAV.
+Resemble.ai uses `https://app.resemble.ai/api/v2/voices` to list ready custom voices after a Resemble.ai API key is entered, then calls `https://f.cluster.resemble.ai/synthesize` with the selected `voice_uuid`, 22.05 kHz sample rate, and `PCM_16` WAV precision. Resemble.ai returns base64 WAV audio; the backend forwards the decoded 16-bit PCM payload so the browser can play and download a continuous WAV.
 
 Gemini and Google Cloud TTS default to very short 500-character segments to avoid the quality drop that can appear in longer synthesized passages. Cloud Gemini-TTS has a 4,000-byte text-field limit per request, so the backend applies a stricter Google segment cap and checks UTF-8 byte length when splitting text.
 
