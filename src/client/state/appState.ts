@@ -30,6 +30,7 @@ export interface AppState {
   bufferSeconds: number;
   waveformLevel: number;
   stitchedAudio: StitchedAudio | null;
+  audioAvailable: boolean;
   operationBusy: boolean;
 }
 
@@ -69,6 +70,7 @@ export function createInitialState(): AppState {
     bufferSeconds: 0,
     waveformLevel: 0,
     stitchedAudio: null,
+    audioAvailable: false,
     operationBusy: false
   };
 }

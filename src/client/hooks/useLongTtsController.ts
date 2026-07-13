@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import { activeSegmentLimits, isOpenRouterPcmModel, isVoxtralModel, PROVIDERS } from "../config/providers";
+import { activeSegmentLimits, isOpenRouterPcmModel, isVoxtralModel, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../config/providers";
 import { api, fileToBase64 } from "../services/apiClient";
 import { AudioEngine } from "../services/audioEngine";
 import { NarrationSession } from "../services/narrationSession";
@@ -37,7 +37,8 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     audioEngineRef.current = new AudioEngine(audioRef.current, {
       onStatus: setStatus,
       onBufferChange: (bufferSeconds) => dispatch({ type: "patch", patch: { bufferSeconds } }),
-      onLevel: () => dispatch({ type: "patch", patch: { waveformLevel: performance.now() } })
+      onLevel: () => dispatch({ type: "patch", patch: { waveformLevel: performance.now() } }),
+      onAudioAvailable: () => dispatch({ type: "patch", patch: { audioAvailable: true } })
     });
     return () => {
       sessionRef.current?.dispose();
@@ -84,7 +85,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
           }
           const { models } = await api.openRouterModels(key, controller.signal);
           if (controller.signal.aborted || stateRef.current.provider !== "openrouter") return;
-          const voiceMap = Object.fromEntries(models.map((model) => [model.id, model.voices || []]));
+          const voiceMap = Object.fromEntries(models.map((model) => [model.id, sortVoiceOptions(model.voices || [])]));
           const preferred = models.some((model) => model.id === current.openrouterModel) ? current.openrouterModel : models[0]?.id || "";
           if (preferred) sessionStorage.setItem(STORAGE_KEYS.openrouterModel, preferred);
           const options = voiceMap[preferred] || [];
@@ -114,14 +115,20 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
   const providerConfig = PROVIDERS[state.provider];
   const openrouterBaseVoices = state.openrouterVoiceOptions[state.openrouterModel] || providerConfig.voices;
   const voiceOptions = useMemo<SelectOption[]>(() => {
-    if (state.provider === "resemble") return state.resembleVoices.length ? state.resembleVoices.map((voice) => ({ value: voice.id, label: voice.languages?.[0] ? `${voice.name} (${voice.languages[0]})` : voice.name })) : providerConfig.voices;
-    if (state.provider === "minimax") return state.minimaxVoices.length ? state.minimaxVoices.map((voice) => ({ value: voice.id, label: voice.model ? `${voice.name} (${voice.model})` : voice.name })) : providerConfig.voices;
-    if (state.provider === "openrouter" && isVoxtralModel(state.openrouterModel)) {
-      const clones = state.openrouterClones.map((voice) => ({ value: `voice_id:${voice.id}`, label: `Clone: ${voice.name}${voice.languages?.length ? ` (${voice.languages.join(", ")})` : ""}` }));
-      return clones.length ? [...openrouterBaseVoices, ...clones] : openrouterBaseVoices;
-    }
-    return state.provider === "openrouter" ? openrouterBaseVoices : providerConfig.voices;
+    let options: SelectOption[];
+    if (state.provider === "resemble") options = state.resembleVoices.length ? state.resembleVoices.map((voice) => ({ value: voice.id, label: voice.languages?.[0] ? `${voice.name} (${voice.languages[0]})` : voice.name, gender: voice.gender })) : providerConfig.voices;
+    else if (state.provider === "minimax") options = state.minimaxVoices.length ? state.minimaxVoices.map((voice) => ({ value: voice.id, label: voice.model ? `${voice.name} (${voice.model})` : voice.name, gender: voice.gender })) : providerConfig.voices;
+    else if (state.provider === "openrouter" && isVoxtralModel(state.openrouterModel)) {
+      const clones = state.openrouterClones.map((voice) => ({ value: `voice_id:${voice.id}`, label: `${voice.name}${voice.languages?.length ? ` (${voice.languages.join(", ")})` : ""} · clone`, gender: voice.gender }));
+      options = clones.length ? [...openrouterBaseVoices, ...clones] : openrouterBaseVoices;
+    } else options = state.provider === "openrouter" ? openrouterBaseVoices : providerConfig.voices;
+    return sortVoiceOptions(options).map((option) => {
+      const icon = voiceGenderIcon(option.gender);
+      return icon ? { ...option, label: `${icon}  ${option.label}` } : option;
+    });
   }, [openrouterBaseVoices, providerConfig.voices, state.minimaxVoices, state.openrouterClones, state.openrouterModel, state.provider, state.resembleVoices]);
+
+  const hasVoiceGenderMetadata = useMemo(() => voiceOptions.some((option) => Boolean(option.gender)), [voiceOptions]);
 
   const selectProvider = useCallback((provider: ProviderId) => {
     sessionStorage.setItem(STORAGE_KEYS.provider, provider);
@@ -239,11 +246,13 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
       dispatch({ type: "patch", patch: { currentSegment: event.index, totalSegments: event.totalSegments, progress: (event.index / event.totalSegments) * 100, status: `Buffered segment ${event.index}.` } });
     } else if (event.type === "complete") {
       const stitchedAudio = audioEngineRef.current?.complete() || null;
-      dispatch({ type: "patch", patch: { phase: "completed", progress: 100, stitchedAudio, status: stitchedAudio ? `Narration fully generated. Continuous ${stitchedAudio.extension.toUpperCase()} ready.` : "Narration fully generated, but no audio was received." } });
+      dispatch({ type: "patch", patch: { phase: "completed", progress: 100, stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `Narration fully generated. Continuous ${stitchedAudio.extension.toUpperCase()} ready.` : "Narration fully generated, but no audio was received." } });
     } else if (event.type === "cancelled") {
-      dispatch({ type: "patch", patch: { phase: "stopped", status: event.message || "Cancelled." } });
+      const stitchedAudio = audioEngineRef.current?.snapshot() || null;
+      dispatch({ type: "patch", patch: { phase: "stopped", stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `${event.message || "Cancelled."} Partial ${stitchedAudio.extension.toUpperCase()} is ready.` : event.message || "Cancelled." } });
     } else if (event.type === "error") {
-      dispatch({ type: "patch", patch: { phase: "error", status: event.message || "Narration failed." } });
+      const stitchedAudio = audioEngineRef.current?.snapshot() || null;
+      dispatch({ type: "patch", patch: { phase: "error", stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `${event.message || "Narration failed."} Partial ${stitchedAudio.extension.toUpperCase()} is ready.` : event.message || "Narration failed." } });
     }
   }, [setStatus]);
 
@@ -266,15 +275,21 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
     };
     const initialPcm = current.provider === "gemini" || current.provider === "google" || current.provider === "resemble" || (current.provider === "openrouter" && isOpenRouterPcmModel(current.openrouterModel));
     audioEngineRef.current?.reset(initialPcm ? "pcm_s16le" : "mpeg");
-    dispatch({ type: "patch", patch: { phase: "connecting", status: "Opening local narration stream...", progress: 0, currentSegment: 0, totalSegments: 0, stitchedAudio: null } });
+    dispatch({ type: "patch", patch: { phase: "connecting", status: "Opening local narration stream...", progress: 0, currentSegment: 0, totalSegments: 0, stitchedAudio: null, audioAvailable: false } });
     const session = new NarrationSession({
       onOpen: () => setStatus("Narration stream connected."), onEvent: handleServerEvent,
       onAudio: (chunk) => audioEngineRef.current?.push(chunk),
       onClose: () => {
         const phase = stateRef.current.phase;
-        if (phase === "connecting" || phase === "generating") dispatch({ type: "patch", patch: { phase: "error", status: "Narration stream closed unexpectedly." } });
+        if (phase === "connecting" || phase === "generating") {
+          const stitchedAudio = audioEngineRef.current?.snapshot() || null;
+          dispatch({ type: "patch", patch: { phase: "error", stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `Narration stream closed unexpectedly. Partial ${stitchedAudio.extension.toUpperCase()} is ready.` : "Narration stream closed unexpectedly." } });
+        }
       },
-      onError: (message) => dispatch({ type: "patch", patch: { phase: "error", status: message } })
+      onError: (message) => {
+        const stitchedAudio = audioEngineRef.current?.snapshot() || null;
+        dispatch({ type: "patch", patch: { phase: "error", stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `${message} Partial ${stitchedAudio.extension.toUpperCase()} is ready.` : message } });
+      }
     });
     sessionRef.current = session;
     session.start({ type: "start", apiKey, text: current.text.trim(), options }, () => ({ paused: audioRef.current?.paused ?? true, bufferedAheadSeconds: audioEngineRef.current?.bufferedAheadSeconds() ?? 0 }));
@@ -283,7 +298,8 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
   const stopNarration = useCallback(() => {
     sessionRef.current?.cancel();
     audioEngineRef.current?.stop();
-    dispatch({ type: "patch", patch: { phase: "stopped", status: "Stopped." } });
+    const stitchedAudio = audioEngineRef.current?.snapshot() || null;
+    dispatch({ type: "patch", patch: { phase: "stopped", stitchedAudio, audioAvailable: Boolean(stitchedAudio), status: stitchedAudio ? `Stopped. Partial ${stitchedAudio.extension.toUpperCase()} is ready.` : "Stopped." } });
   }, []);
 
   const disconnectGoogle = useCallback(async () => {
@@ -298,7 +314,8 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
 
   const download = useCallback(() => {
     const current = stateRef.current;
-    if (current.stitchedAudio) audioEngineRef.current?.download(current.stitchedAudio, current.provider);
+    const stitchedAudio = audioEngineRef.current?.snapshot() || current.stitchedAudio;
+    if (stitchedAudio) audioEngineRef.current?.download(stitchedAudio, current.provider);
   }, []);
 
   const stats = useMemo(() => {
@@ -308,7 +325,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
   }, [providerConfig, state.text.length]);
 
   return {
-    state, providerConfig, voiceOptions, stats,
+    state, providerConfig, voiceOptions, hasVoiceGenderMetadata, stats,
     limits: activeSegmentLimits(state.provider, state.openrouterModel),
     actions: {
       selectProvider, setCredential, setRememberCredential, selectOpenRouterModel, setMinimaxModel,

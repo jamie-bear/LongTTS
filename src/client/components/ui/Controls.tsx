@@ -2,11 +2,11 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAt
 import type { SelectOption } from "../../types/contracts";
 
 export function Button({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...props} className={className} />;
+  return <button {...props} className={`button ${className}`.trim()} />;
 }
 
-export function SelectField({ id, label, options, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { id: string; label: string; options: SelectOption[] }) {
-  return <label className="field"><span>{label}</span><select id={id} {...props}>{options.map((option, index) => <option key={`${option.value}-${index}`} value={option.value} disabled={option.disabled}>{option.label}</option>)}</select></label>;
+export function SelectField({ id, label, options, helper, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { id: string; label: string; options: SelectOption[]; helper?: ReactNode }) {
+  return <label className="field" htmlFor={id}><span className="field-label">{label}</span><select id={id} {...props}>{options.map((option, index) => <option key={`${option.value}-${index}`} value={option.value} disabled={option.disabled}>{option.label}</option>)}</select>{helper && <small className="field-help">{helper}</small>}</label>;
 }
 
 export function Checkbox({ id, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { id: string; label: ReactNode }) {

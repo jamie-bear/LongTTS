@@ -7,6 +7,7 @@ export interface SelectOption {
   value: string;
   label: string;
   language?: string;
+  gender?: string;
   disabled?: boolean;
 }
 
@@ -23,6 +24,7 @@ export interface ProviderConfig {
   costPerMillionChars?: number;
   supportsLowLatency?: boolean;
   supportsTextNormalization?: boolean;
+  supportsSpeed?: boolean;
   authMode: "api-key" | "google-oauth";
   voices: SelectOption[];
   languages: SelectOption[];

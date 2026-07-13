@@ -10,7 +10,7 @@ export const GEMINI_VOICES: SelectOption[] = [
   ["Gacrux", "Mature"], ["Pulcherrima", "Forward"], ["Achird", "Friendly"],
   ["Zubenelgenubi", "Casual"], ["Vindemiatrix", "Gentle"], ["Sadachbia", "Lively"],
   ["Sadaltager", "Knowledgeable"], ["Sulafat", "Warm"]
-].map(([value, quality]) => ({ value, label: `${value} - ${quality}` }));
+].map(([value, quality]) => ({ value, label: `${value} — ${quality}`, gender: value === "Enceladus" ? "male" : undefined }));
 
 const optionList = (entries: Array<[string, string]>): SelectOption[] => entries.map(([value, label]) => ({ value, label }));
 const autoOnly = optionList([["auto", "Auto"]]);
@@ -36,19 +36,19 @@ const providers: ProviderConfig[] = [
   {
     id: "openrouter", label: "OpenRouter: Various Models", storageKey: "openrouterApiKey",
     credentialLabel: "OpenRouter API key", credentialPlaceholder: "sk-or-...", authMode: "api-key",
-    defaultVoice: "alloy", defaultLanguage: "auto", defaultSegmentChars: 4500, maxSegmentChars: 12000,
+    defaultVoice: "alloy", defaultLanguage: "auto", defaultSegmentChars: 2500, maxSegmentChars: 12000, supportsSpeed: true,
     voices: [{ value: "", label: "Select a model to load voices" }], languages: autoOnly
   },
   {
     id: "minimax", label: "MiniMax: Custom Voices", storageKey: "minimaxApiKey",
     credentialLabel: "MiniMax API key", credentialPlaceholder: "MiniMax API key", authMode: "api-key",
-    defaultVoice: "", defaultLanguage: "auto", defaultSegmentChars: 4500, maxSegmentChars: 10000,
+    defaultVoice: "", defaultLanguage: "auto", defaultSegmentChars: 2500, maxSegmentChars: 10000, supportsSpeed: true,
     costPerMillionChars: 30, voices: [{ value: "", label: "Create or refresh MiniMax custom voices" }], languages: MINIMAX_LANGUAGES.slice(0, 14)
   },
   {
     id: "xai", label: "xAI: Grok TTS 1.0", storageKey: "xaiApiKey", credentialLabel: "xAI API key",
     credentialPlaceholder: "xai-...", authMode: "api-key", defaultVoice: "eve", defaultLanguage: "auto",
-    defaultSegmentChars: 4500, maxSegmentChars: 12000, costPerMillionChars: 15,
+    defaultSegmentChars: 2500, maxSegmentChars: 12000, costPerMillionChars: 15, supportsSpeed: true,
     supportsLowLatency: true, supportsTextNormalization: true,
     voices: optionList([["eve", "Eve"], ["ara", "Ara"], ["leo", "Leo"], ["rex", "Rex"], ["sal", "Sal"]]),
     languages: xaiLanguages
@@ -56,13 +56,13 @@ const providers: ProviderConfig[] = [
   {
     id: "gemini", label: "Gemini API: Gemini 3.1 Flash TTS (Preview)", storageKey: "geminiApiKey",
     credentialLabel: "Gemini API key", credentialPlaceholder: "AI Studio API key", authMode: "api-key",
-    defaultVoice: "Enceladus", defaultLanguage: "auto", defaultSegmentChars: 500, maxSegmentChars: 12000,
+    defaultVoice: "Enceladus", defaultLanguage: "auto", defaultSegmentChars: 500, maxSegmentChars: 12000, supportsSpeed: true,
     voices: GEMINI_VOICES, languages: autoOnly
   },
   {
     id: "google", label: "Google: Gemini 3.1 Flash TTS (Preview)", storageKey: "googleTtsCredential",
     credentialLabel: "", credentialPlaceholder: "", authMode: "google-oauth", defaultVoice: "Enceladus",
-    defaultLanguage: "en-US", defaultSegmentChars: 500, maxSegmentChars: 4500, voices: GEMINI_VOICES,
+    defaultLanguage: "en-US", defaultSegmentChars: 500, maxSegmentChars: 4500, supportsSpeed: true, voices: GEMINI_VOICES,
     languages: optionList([["en-US", "English (US)"], ["en-GB", "English (UK)"], ["de-DE", "German (Germany)"],
       ["fr-FR", "French (France)"], ["it-IT", "Italian (Italy)"], ["es-ES", "Spanish (Spain)"],
       ["pt-BR", "Portuguese (Brazil)"], ["ja-JP", "Japanese"], ["ko-KR", "Korean"]])
@@ -70,7 +70,7 @@ const providers: ProviderConfig[] = [
   {
     id: "resemble", label: "Resemble.ai: Custom Voices", storageKey: "resembleApiKey",
     credentialLabel: "Resemble.ai API key", credentialPlaceholder: "Bearer token", authMode: "api-key",
-    defaultVoice: "", defaultLanguage: "auto", defaultSegmentChars: 4500, maxSegmentChars: 12000,
+    defaultVoice: "", defaultLanguage: "auto", defaultSegmentChars: 2500, maxSegmentChars: 12000, supportsSpeed: false,
     voices: [{ value: "", label: "Enter a Resemble.ai API key to load custom voices" }], languages: autoOnly
   }
 ];
@@ -83,6 +83,18 @@ export const MINIMAX_MODELS = ["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-
 export const isProviderId = (value: string | null): value is ProviderId => Boolean(value && value in PROVIDERS);
 export const isVoxtralModel = (modelId: string) => /voxtral/i.test(modelId);
 export const isOpenRouterPcmModel = (modelId: string) => /(^|[/:-])(?:google|gemini)(?:[/:-]|$)/i.test(modelId);
+
+export function sortVoiceOptions(options: SelectOption[]) {
+  return [...options].sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base", numeric: true }));
+}
+
+export function voiceGenderIcon(gender?: string) {
+  const normalized = gender?.trim().toLowerCase();
+  if (normalized === "female" || normalized === "woman") return "♀";
+  if (normalized === "male" || normalized === "man") return "♂";
+  if (normalized === "unisex" || normalized === "neutral" || normalized === "nonbinary") return "⚥";
+  return "";
+}
 
 export function activeSegmentLimits(provider: ProviderId, model: string) {
   const config = PROVIDERS[provider];

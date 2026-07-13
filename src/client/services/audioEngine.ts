@@ -4,6 +4,7 @@ interface AudioEngineEvents {
   onStatus: (message: string) => void;
   onBufferChange: (seconds: number) => void;
   onLevel: (level: number) => void;
+  onAudioAvailable: () => void;
 }
 
 interface PlaybackItem { url: string; bytes: number }
@@ -98,6 +99,7 @@ export class AudioEngine {
     if (this.activeSegmentIndex < 0) this.beginSegment(this.segmentAudioChunks.length + 1);
     this.segmentAudioChunks[this.activeSegmentIndex].push(chunk);
     this.events.onLevel(1);
+    this.events.onAudioAvailable();
 
     if (this.encoding === "pcm_s16le") {
       this.queuePcm(chunk);
@@ -112,6 +114,10 @@ export class AudioEngine {
 
   complete(): StitchedAudio | null {
     this.endMediaStream();
+    return this.snapshot();
+  }
+
+  snapshot(): StitchedAudio | null {
     const segments = this.segmentAudioChunks.filter((segment) => segment.length) || [];
     const generated = segments.length ? segments : this.audioChunks.length ? [this.audioChunks] : [];
     if (!generated.length) return null;

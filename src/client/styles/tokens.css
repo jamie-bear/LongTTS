@@ -1,29 +1,24 @@
 :root {
   color-scheme: light;
-  --color-text: #17201c;
-  --color-text-muted: #60706a;
-  --color-border: #d7ded9;
-  --color-panel: #ffffff;
-  --color-surface: #f5f7f2;
-  --color-action: #146c5f;
-  --color-action-strong: #0d4f47;
-  --color-accent-warm: #c8872a;
-  --color-accent-rose: #b45d69;
-  --color-accent-blue: #466ea6;
-  --radius-control: 8px;
-  --shadow-panel: 0 20px 60px rgba(33, 45, 39, 0.12);
+  --color-canvas: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f8fafc;
+  --color-surface-muted: #eef2f6;
+  --color-text: #15202b;
+  --color-text-muted: #647180;
+  --color-text-faint: #8793a1;
+  --color-border: #dce2e8;
+  --color-border-strong: #c8d0d9;
+  --color-action: #3157d5;
+  --color-action-hover: #2545b7;
+  --color-action-soft: #eef2ff;
+  --color-success: #18794e;
+  --color-success-soft: #edf8f2;
+  --color-warning: #9a6700;
+  --color-danger: #c53030;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(20, 32, 43, 0.04), 0 8px 24px rgba(20, 32, 43, 0.04);
   --motion-fast: 140ms;
-
-  /* Compatibility aliases keep the current presentation stable during migration. */
-  --ink: var(--color-text);
-  --muted: var(--color-text-muted);
-  --line: var(--color-border);
-  --panel: var(--color-panel);
-  --surface: var(--color-surface);
-  --accent: var(--color-action);
-  --accent-strong: var(--color-action-strong);
-  --gold: var(--color-accent-warm);
-  --rose: var(--color-accent-rose);
-  --blue: var(--color-accent-blue);
-  --shadow: var(--shadow-panel);
 }
