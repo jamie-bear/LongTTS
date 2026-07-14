@@ -21,7 +21,7 @@ Mara looked down at the ticket again. The ink was fresh. Under the station name,
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement | null>) {
+export function useBigTtsController(audioRef: React.RefObject<HTMLAudioElement | null>) {
   const [state, dispatch] = useReducer(appReducer, undefined, createInitialState);
   const stateRef = useRef(state);
   const audioEngineRef = useRef<AudioEngine | null>(null);
@@ -303,7 +303,7 @@ export function useLongTtsController(audioRef: React.RefObject<HTMLAudioElement 
   }, [setStatus]);
 
   const connectGoogle = useCallback(() => {
-    const popup = window.open("/auth/google/start", "longtts-google-oauth", "popup=yes,width=560,height=720");
+    const popup = window.open("/auth/google/start", "bigtts-google-oauth", "popup=yes,width=560,height=720");
     if (!popup) setStatus("Allow popups to connect Google.");
   }, [setStatus]);
 

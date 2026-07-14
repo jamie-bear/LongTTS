@@ -1,4 +1,4 @@
-# LongTTS
+# bigTTS
 
 A local audiobook web app for turning long-form text into narration through OpenRouter speech models, Gemini TTS, xAI streaming TTS, Google Cloud Text-to-Speech voices, MiniMax custom voices, or Resemble.ai custom voices.
 
@@ -24,7 +24,7 @@ Make sure Docker Desktop or another Docker engine is running first.
 docker compose up --build
 ```
 
-Then open `http://localhost:10203`.
+Then open `http://localhost:20204`.
 
 To run in the background:
 
@@ -38,7 +38,9 @@ To stop:
 docker compose down
 ```
 
-The default container and host port is `10203`. To change it, update `PORT` and the `ports` mapping in `compose.yaml`.
+The default container and host port is `20204`. To change it, update `PORT` and the `ports` mapping in `compose.yaml`.
+
+The Compose service, image, and container are all named `bigtts`, keeping them distinct from another installation that may be running alongside this one. The bind-mounted `.secrets` directory is local to this checkout, so its OAuth token is isolated too.
 
 ## Local Node Fallback
 
@@ -50,7 +52,7 @@ npm run build
 npm start
 ```
 
-Production runs at `http://localhost:10203`.
+Production runs at `http://localhost:20204`.
 
 For frontend development with hot reload:
 
@@ -59,7 +61,7 @@ npm install
 npm run dev
 ```
 
-Vite remains at `http://localhost:10203` and proxies API, OAuth, and narration WebSocket traffic to the local Node backend on port `10204`.
+Vite remains at `http://localhost:20204` and proxies API, OAuth, and narration WebSocket traffic to the local Node backend on port `20205`. Both ports are distinct so this development stack can run in parallel with another installation.
 
 ## Frontend Quality Checks
 
@@ -93,7 +95,7 @@ GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
 In the Google Cloud OAuth client, add this authorized redirect URI:
 
 ```text
-http://localhost:10203/oauth/google/callback
+http://localhost:20204/oauth/google/callback
 ```
 
 If your OAuth consent screen is in testing mode, add your Google account as a test user. The Cloud Text-to-Speech API must be enabled for the project, and the signed-in account needs access to use it. Gemini-TTS through Cloud Text-to-Speech also needs `aiplatform.endpoints.predict`, which can be granted with the Vertex AI User role. After restarting the app, choose Google Cloud TTS and use Connect Google. The refresh token is stored locally at `.secrets/google-oauth-token.json`, which is ignored by Git and mounted into Docker Compose for persistence.

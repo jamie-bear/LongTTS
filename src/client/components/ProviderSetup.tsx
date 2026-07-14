@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { MINIMAX_LANGUAGES, MINIMAX_MODELS, PROVIDER_ORDER, PROVIDERS } from "../config/providers";
-import type { useLongTtsController } from "../hooks/useLongTtsController";
+import type { useBigTtsController } from "../hooks/useBigTtsController";
 import { Button, Checkbox, FieldPanel } from "./ui/Controls";
 import { Icon } from "./ui/Icon";
 
-type Controller = ReturnType<typeof useLongTtsController>;
+type Controller = ReturnType<typeof useBigTtsController>;
 
 export function ProviderSetup({ controller }: { controller: Controller }) {
   const { state, providerConfig, actions } = controller;

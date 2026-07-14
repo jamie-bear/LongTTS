@@ -1,9 +1,9 @@
 import type { ChangeEvent } from "react";
-import type { useLongTtsController } from "../hooks/useLongTtsController";
+import type { useBigTtsController } from "../hooks/useBigTtsController";
 import { Button } from "./ui/Controls";
 import { Icon } from "./ui/Icon";
 
-type Controller = ReturnType<typeof useLongTtsController>;
+type Controller = ReturnType<typeof useBigTtsController>;
 
 export function TextWorkspace({ controller }: { controller: Controller }) {
   const { state, stats, actions } = controller;

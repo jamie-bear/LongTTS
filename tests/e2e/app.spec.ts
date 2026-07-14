@@ -27,7 +27,7 @@ test.beforeEach(async ({ page, context }) => {
 });
 
 test("keeps the desktop and mobile shells free of horizontal page overflow", async ({ page }) => {
-  await expect(page.getByRole("link", { name: "LongTTS home" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "bigTTS home" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
@@ -59,7 +59,7 @@ test("keeps unsupported synthesis options collapsed by default", async ({ page }
 });
 
 test("matches the visual-parity baseline", async ({ page }) => {
-  await expect(page.getByRole("link", { name: "LongTTS home" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "bigTTS home" })).toBeVisible();
   await expect(page).toHaveScreenshot("app-shell.png", {
     fullPage: true,
     animations: "disabled",

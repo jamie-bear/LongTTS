@@ -6,7 +6,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:10203",
+    baseURL: "http://127.0.0.1:20204",
     trace: "retain-on-failure"
   },
   projects: [
@@ -15,7 +15,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev",
-    url: "http://127.0.0.1:10203/api/health",
+    url: "http://127.0.0.1:20204/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000
   }

@@ -1,11 +1,11 @@
 import type { ReactNode, RefObject } from "react";
 import { isOpenRouterPcmModel, SEGMENT_OPTIONS } from "../config/providers";
-import type { useLongTtsController } from "../hooks/useLongTtsController";
+import type { useBigTtsController } from "../hooks/useBigTtsController";
 import { ProviderSetup } from "./ProviderSetup";
 import { Button, Checkbox, SelectField } from "./ui/Controls";
 import { Icon } from "./ui/Icon";
 
-type Controller = ReturnType<typeof useLongTtsController>;
+type Controller = ReturnType<typeof useBigTtsController>;
 
 export function NarrationPanel({ controller, audioRef }: { controller: Controller; audioRef: RefObject<HTMLAudioElement | null> }) {
   const { state, providerConfig, voiceOptions, hasVoiceGenderMetadata, limits, actions } = controller;

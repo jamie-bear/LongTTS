@@ -3,5 +3,5 @@ import App from "./App";
 import "./styles/index.css";
 
 const root = document.getElementById("root");
-if (!root) throw new Error("LongTTS root element is missing.");
+if (!root) throw new Error("bigTTS root element is missing.");
 createRoot(root).render(<App />);

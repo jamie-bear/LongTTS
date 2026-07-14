@@ -1,18 +1,18 @@
 services:
-  longtts:
+  bigtts:
     build:
       context: .
-    image: longtts:local
-    container_name: longtts
+    image: bigtts:local
+    container_name: bigtts
     environment:
       NODE_ENV: production
-      PORT: "10203"
+      PORT: "20204"
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
       GOOGLE_OAUTH_TOKEN_PATH: ${GOOGLE_OAUTH_TOKEN_PATH:-.secrets/google-oauth-token.json}
     ports:
-      - "10203:10203"
+      - "20204:20204"
     volumes:
       - ./.secrets:/app/.secrets
     restart: unless-stopped

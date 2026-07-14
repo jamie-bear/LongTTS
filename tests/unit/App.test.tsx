@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { vi } from "vitest";
 import App from "../../src/client/App";
 
-describe("LongTTS application shell", () => {
+describe("bigTTS application shell", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -15,7 +15,7 @@ describe("LongTTS application shell", () => {
   it("renders the current hierarchy and all supported providers", async () => {
     render(<App />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect(screen.getByRole("link", { name: "LongTTS home" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "bigTTS home" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Gemini API: Gemini 3.1 Flash TTS (Preview)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start narration" })).toBeEnabled();
   });

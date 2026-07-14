@@ -13,7 +13,7 @@ const publicDir = path.resolve(rootDir, process.env.STATIC_DIR || "dist");
 
 loadDotEnv(path.join(rootDir, ".env"));
 
-const PORT = Number(process.env.PORT || 10203);
+const PORT = Number(process.env.PORT || 20204);
 const XAI_TTS_URL = "wss://api.x.ai/v1/tts";
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=speech";
 const OPENROUTER_TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
@@ -213,7 +213,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`LongTTS is running at http://localhost:${PORT}`);
+  console.log(`bigTTS is running at http://localhost:${PORT}`);
 });
 
 async function handleOpenRouterModels(req, res) {
@@ -245,7 +245,7 @@ async function handleOpenRouterModels(req, res) {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": getRequestOrigin(req),
-        "X-Title": "LongTTS"
+        "X-Title": "bigTTS"
       }
     });
     const parsed = await response.json().catch(() => null);
@@ -299,7 +299,7 @@ async function handleProviderBalance(req, res) {
     const response = await fetch(OPENROUTER_KEY_URL, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "X-Title": "LongTTS"
+        "X-Title": "bigTTS"
       }
     });
     const text = await response.text().catch(() => "");
@@ -521,7 +521,7 @@ async function requestMiniMaxJson(url, { apiKey, method = "GET", payload = null,
 
 function createMiniMaxVoiceId(name) {
   const slug = String(name || "voice").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 36) || "voice";
-  return `longtts_${slug}_${Date.now().toString(36)}`;
+  return `bigtts_${slug}_${Date.now().toString(36)}`;
 }
 
 function sanitizeMiniMaxModel(value) {
@@ -744,7 +744,7 @@ async function finishGoogleOAuth(req, res, url) {
     await writeGoogleOAuthTokenFile(tokenBody);
     sendGoogleOAuthResult(res, 200, {
       title: "Google is connected",
-      message: "You can close this tab and return to LongTTS.",
+      message: "You can close this tab and return to bigTTS.",
       success: true
     });
   } catch (exchangeError) {
@@ -1646,7 +1646,7 @@ async function synthesizeOpenRouterSpeech(text, options, apiKey, signal) {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       Authorization: `Bearer ${trimmedApiKey}`,
-      "X-Title": "LongTTS"
+      "X-Title": "bigTTS"
     },
     body: JSON.stringify({
       model: options.model,
