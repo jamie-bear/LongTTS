@@ -318,7 +318,8 @@ export function useBigTtsController(audioRef: React.RefObject<HTMLAudioElement |
   const stats = useMemo(() => {
     const chars = state.text.length;
     const price = providerConfig.costPerMillionChars;
-    return { chars, cost: price ? `$${((chars / 1_000_000) * price).toFixed(3)} estimated` : `${providerConfig.label.split(":")[0]} pricing varies by model` };
+    const providerName = providerConfig.label.split(/[:—]/)[0].trim();
+    return { chars, cost: price ? `$${((chars / 1_000_000) * price).toFixed(3)} estimated` : `${providerName} pricing varies by model` };
   }, [providerConfig, state.text.length]);
 
   return {
