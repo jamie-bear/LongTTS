@@ -23,6 +23,7 @@ describe("bigTTS application shell", () => {
 
   it("explains Google access routes and renders voice gender as provider-backed text", async () => {
     render(<App />);
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "gemini" } });
     expect(screen.getByText(/Developer API, using an AI Studio API key/)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Enceladus — Breathy — Male" })).toBeInTheDocument();
