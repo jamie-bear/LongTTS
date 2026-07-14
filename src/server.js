@@ -618,7 +618,8 @@ function normalizeResembleVoices(parsed) {
       id: String(voice?.uuid || voice?.id || ""),
       name: String(voice?.name || voice?.uuid || voice?.id || ""),
       language: String(voice?.default_language || ""),
-      languages: Array.isArray(voice?.supported_languages) ? voice.supported_languages.map(String) : []
+      languages: Array.isArray(voice?.supported_languages) ? voice.supported_languages.map(String) : [],
+      gender: String(voice?.gender || "").trim()
     }))
     .filter((voice) => voice.id);
 }

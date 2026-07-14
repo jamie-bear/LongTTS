@@ -15,7 +15,7 @@ export function ProviderSetup({ controller }: { controller: Controller }) {
     <div className="field"><label className="field-label" htmlFor="provider">Provider</label>
       <select id="provider" value={state.provider} onChange={(event) => actions.selectProvider(event.target.value as keyof typeof PROVIDERS)}>
         {PROVIDER_ORDER.map((id) => <option key={id} value={id}>{PROVIDERS[id].label}</option>)}
-      </select></div>
+      </select>{providerConfig.accessDescription && <small className="field-help">{providerConfig.accessDescription}</small>}</div>
       {usesKey && <div className="credential-block">
         {remembered ? <div className="credential-saved">
           <Icon name="check" />

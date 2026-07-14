@@ -1,4 +1,4 @@
-import { activeSegmentLimits, isOpenRouterPcmModel, PROVIDER_ORDER, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../../src/client/config/providers";
+import { activeSegmentLimits, GEMINI_VOICES, isOpenRouterPcmModel, knownModelVoiceGender, PROVIDER_ORDER, PROVIDERS, sortVoiceOptions, voiceGenderLabel } from "../../src/client/config/providers";
 
 describe("provider registry", () => {
   it("contains every supported provider, including the restored Gemini option", () => {
@@ -15,10 +15,14 @@ describe("provider registry", () => {
     expect(PROVIDERS.xai.defaultSegmentChars).toBe(2500);
   });
 
-  it("sorts voices alphabetically and maps gender metadata to compact icons", () => {
+  it("sorts voices and maps provider gender metadata to consistent text labels", () => {
     expect(sortVoiceOptions([{ value: "z", label: "Zulu" }, { value: "a", label: "alpha" }]).map(({ value }) => value)).toEqual(["a", "z"]);
-    expect(voiceGenderIcon("female")).toBe("♀");
-    expect(voiceGenderIcon("male")).toBe("♂");
-    expect(voiceGenderIcon("neutral")).toBe("⚥");
+    expect(voiceGenderLabel("female")).toBe("Female");
+    expect(voiceGenderLabel("male")).toBe("Male");
+    expect(voiceGenderLabel("neutral")).toBe("Neutral");
+    expect(voiceGenderLabel("unsupported-value")).toBe("");
+    expect(GEMINI_VOICES.every((voice) => Boolean(voice.gender))).toBe(true);
+    expect(knownModelVoiceGender("google/gemini-tts", "Kore")).toBe("female");
+    expect(knownModelVoiceGender("x-ai/grok-tts", "sal")).toBe("neutral");
   });
 });

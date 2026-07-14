@@ -16,8 +16,23 @@ describe("bigTTS application shell", () => {
     render(<App />);
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(screen.getByRole("link", { name: "bigTTS home" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Gemini API: Gemini 3.1 Flash TTS (Preview)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Gemini Developer API — API key" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Google Cloud TTS — OAuth" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start narration" })).toBeEnabled();
+  });
+
+  it("explains Google access routes and renders voice gender as provider-backed text", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "gemini" } });
+    expect(screen.getByText(/Developer API, using an AI Studio API key/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Enceladus — Breathy — Male" })).toBeInTheDocument();
+    expect(screen.queryByText(/♀|♂|⚥/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "google" } });
+    expect(screen.getByText(/Google Cloud Text-to-Speech, using Google OAuth/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "xai" } });
+    expect(screen.getByRole("option", { name: "Sal — Neutral" })).toBeInTheDocument();
   });
 
   it("loads and clears the sample while updating text statistics", async () => {

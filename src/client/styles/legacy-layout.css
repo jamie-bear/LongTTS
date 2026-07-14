@@ -114,8 +114,6 @@ textarea::placeholder { color: var(--color-text-faint); }
 .field { display: grid; min-width: 0; gap: 6px; }
 .field-label, .voice-clone-form label > span, .provider-model-panel > label { color: var(--color-text); font-size: 12px; font-weight: 680; }
 .field-help { color: var(--color-text-muted); font-size: 11px; line-height: 1.35; }
-.gender-legend { font-family: ui-sans-serif, system-ui, sans-serif; letter-spacing: .01em; }
-
 input[type="text"], input[type="password"], input[type="file"], select {
   width: 100%;
   min-height: 40px;

@@ -1,16 +1,29 @@
 import type { ProviderConfig, ProviderId, SelectOption } from "../types/contracts";
 
+export const GEMINI_VOICE_GENDERS: Record<string, "female" | "male"> = {
+  Achernar: "female", Achird: "male", Algenib: "male", Algieba: "male", Alnilam: "male",
+  Aoede: "female", Autonoe: "female", Callirrhoe: "female", Charon: "male", Despina: "female",
+  Enceladus: "male", Erinome: "female", Fenrir: "male", Gacrux: "female", Iapetus: "male",
+  Kore: "female", Laomedeia: "female", Leda: "female", Orus: "male", Puck: "male",
+  Pulcherrima: "female", Rasalgethi: "male", Sadachbia: "male", Sadaltager: "male", Schedar: "male",
+  Sulafat: "female", Umbriel: "male", Vindemiatrix: "female", Zephyr: "female", Zubenelgenubi: "male"
+};
+
+export const XAI_VOICE_GENDERS: Record<string, "female" | "male" | "neutral"> = {
+  ara: "female", eve: "female", leo: "male", rex: "male", sal: "neutral"
+};
+
 export const GEMINI_VOICES: SelectOption[] = [
   ["Kore", "Firm"], ["Puck", "Upbeat"], ["Aoede", "Breezy"], ["Charon", "Informative"],
   ["Zephyr", "Bright"], ["Fenrir", "Excitable"], ["Leda", "Youthful"], ["Orus", "Firm"],
-  ["Callirrhoe", "Easy-going"], ["Autonoe", "Bright"], ["Enceladus", "Breathy (Male)"],
+  ["Callirrhoe", "Easy-going"], ["Autonoe", "Bright"], ["Enceladus", "Breathy"],
   ["Iapetus", "Clear"], ["Umbriel", "Easy-going"], ["Algieba", "Smooth"], ["Despina", "Smooth"],
   ["Erinome", "Clear"], ["Algenib", "Gravelly"], ["Rasalgethi", "Informative"],
   ["Laomedeia", "Upbeat"], ["Achernar", "Soft"], ["Alnilam", "Firm"], ["Schedar", "Even"],
   ["Gacrux", "Mature"], ["Pulcherrima", "Forward"], ["Achird", "Friendly"],
   ["Zubenelgenubi", "Casual"], ["Vindemiatrix", "Gentle"], ["Sadachbia", "Lively"],
   ["Sadaltager", "Knowledgeable"], ["Sulafat", "Warm"]
-].map(([value, quality]) => ({ value, label: `${value} — ${quality}`, gender: value === "Enceladus" ? "male" : undefined }));
+].map(([value, quality]) => ({ value, label: `${value} — ${quality}`, gender: GEMINI_VOICE_GENDERS[value] }));
 
 const optionList = (entries: Array<[string, string]>): SelectOption[] => entries.map(([value, label]) => ({ value, label }));
 const autoOnly = optionList([["auto", "Auto"]]);
@@ -50,17 +63,20 @@ const providers: ProviderConfig[] = [
     credentialPlaceholder: "xai-...", authMode: "api-key", defaultVoice: "eve", defaultLanguage: "auto",
     defaultSegmentChars: 2500, maxSegmentChars: 12000, costPerMillionChars: 15, supportsSpeed: true,
     supportsLowLatency: true, supportsTextNormalization: true,
-    voices: optionList([["eve", "Eve"], ["ara", "Ara"], ["leo", "Leo"], ["rex", "Rex"], ["sal", "Sal"]]),
+    voices: optionList([["eve", "Eve"], ["ara", "Ara"], ["leo", "Leo"], ["rex", "Rex"], ["sal", "Sal"]])
+      .map((voice) => ({ ...voice, gender: XAI_VOICE_GENDERS[voice.value] })),
     languages: xaiLanguages
   },
   {
-    id: "gemini", label: "Gemini API: Gemini 3.1 Flash TTS (Preview)", storageKey: "geminiApiKey",
+    id: "gemini", label: "Gemini Developer API — API key", storageKey: "geminiApiKey",
+    accessDescription: "Gemini 3.1 Flash TTS (Preview) through the Developer API, using an AI Studio API key.",
     credentialLabel: "Gemini API key", credentialPlaceholder: "AI Studio API key", authMode: "api-key",
     defaultVoice: "Enceladus", defaultLanguage: "auto", defaultSegmentChars: 500, maxSegmentChars: 12000, supportsSpeed: true,
     voices: GEMINI_VOICES, languages: autoOnly
   },
   {
-    id: "google", label: "Google: Gemini 3.1 Flash TTS (Preview)", storageKey: "googleTtsCredential",
+    id: "google", label: "Google Cloud TTS — OAuth", storageKey: "googleTtsCredential",
+    accessDescription: "Gemini 3.1 Flash TTS (Preview) through Google Cloud Text-to-Speech, using Google OAuth.",
     credentialLabel: "", credentialPlaceholder: "", authMode: "google-oauth", defaultVoice: "Enceladus",
     defaultLanguage: "en-US", defaultSegmentChars: 500, maxSegmentChars: 4500, supportsSpeed: true, voices: GEMINI_VOICES,
     languages: optionList([["en-US", "English (US)"], ["en-GB", "English (UK)"], ["de-DE", "German (Germany)"],
@@ -87,12 +103,20 @@ export function sortVoiceOptions(options: SelectOption[]) {
   return [...options].sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base", numeric: true }));
 }
 
-export function voiceGenderIcon(gender?: string) {
+export function voiceGenderLabel(gender?: string) {
   const normalized = gender?.trim().toLowerCase();
-  if (normalized === "female" || normalized === "woman") return "♀";
-  if (normalized === "male" || normalized === "man") return "♂";
-  if (normalized === "unisex" || normalized === "neutral" || normalized === "nonbinary") return "⚥";
+  if (normalized === "female" || normalized === "woman") return "Female";
+  if (normalized === "male" || normalized === "man") return "Male";
+  if (normalized === "unisex" || normalized === "neutral" || normalized === "gender-neutral") return "Neutral";
+  if (normalized === "nonbinary" || normalized === "non-binary") return "Non-binary";
   return "";
+}
+
+export function knownModelVoiceGender(modelId: string, voice: string) {
+  const model = modelId.toLowerCase();
+  if (/(^|[/:-])(?:google|gemini)(?:[/:-]|$)/i.test(model)) return GEMINI_VOICE_GENDERS[voice];
+  if (model.includes("x-ai") || model.includes("grok")) return XAI_VOICE_GENDERS[voice.toLowerCase()];
+  return undefined;
 }
 
 export function activeSegmentLimits(provider: ProviderId, model: string) {

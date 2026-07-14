@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import { activeSegmentLimits, isOpenRouterPcmModel, PROVIDERS, sortVoiceOptions, voiceGenderIcon } from "../config/providers";
+import { activeSegmentLimits, isOpenRouterPcmModel, knownModelVoiceGender, PROVIDERS, sortVoiceOptions, voiceGenderLabel } from "../config/providers";
 import { api, fileToBase64 } from "../services/apiClient";
 import { AudioEngine } from "../services/audioEngine";
 import { NarrationSession } from "../services/narrationSession";
@@ -151,14 +151,16 @@ export function useBigTtsController(audioRef: React.RefObject<HTMLAudioElement |
     let options: SelectOption[];
     if (state.provider === "resemble") options = state.resembleVoices.length ? state.resembleVoices.map((voice) => ({ value: voice.id, label: voice.languages?.[0] ? `${voice.name} (${voice.languages[0]})` : voice.name, gender: voice.gender })) : providerConfig.voices;
     else if (state.provider === "minimax") options = state.minimaxVoices.length ? state.minimaxVoices.map((voice) => ({ value: voice.id, label: voice.model ? `${voice.name} (${voice.model})` : voice.name, gender: voice.gender })) : providerConfig.voices;
-    else options = state.provider === "openrouter" ? openrouterBaseVoices : providerConfig.voices;
+    else options = state.provider === "openrouter"
+      ? openrouterBaseVoices.map((voice) => ({ ...voice, gender: voice.gender || knownModelVoiceGender(state.openrouterModel, voice.value) }))
+      : providerConfig.voices;
     return sortVoiceOptions(options).map((option) => {
-      const icon = voiceGenderIcon(option.gender);
-      return icon ? { ...option, label: `${icon}  ${option.label}` } : option;
+      const gender = voiceGenderLabel(option.gender);
+      return gender ? { ...option, label: `${option.label} — ${gender}` } : option;
     });
-  }, [openrouterBaseVoices, providerConfig.voices, state.minimaxVoices, state.provider, state.resembleVoices]);
+  }, [openrouterBaseVoices, providerConfig.voices, state.minimaxVoices, state.openrouterModel, state.provider, state.resembleVoices]);
 
-  const hasVoiceGenderMetadata = useMemo(() => voiceOptions.some((option) => Boolean(option.gender)), [voiceOptions]);
+  const hasVoiceGenderMetadata = useMemo(() => voiceOptions.some((option) => Boolean(voiceGenderLabel(option.gender))), [voiceOptions]);
 
   const selectProvider = useCallback((provider: ProviderId) => {
     sessionStorage.setItem(STORAGE_KEYS.provider, provider);

@@ -14,6 +14,7 @@ export interface SelectOption {
 export interface ProviderConfig {
   id: ProviderId;
   label: string;
+  accessDescription?: string;
   storageKey: string;
   credentialLabel: string;
   credentialPlaceholder: string;
