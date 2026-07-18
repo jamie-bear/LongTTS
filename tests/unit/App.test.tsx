@@ -84,4 +84,32 @@ describe("bigTTS application shell", () => {
     await waitFor(() => expect(screen.getByLabelText("Provider balance")).toHaveTextContent("12.34"), { timeout: 1500 });
     expect(screen.queryByText("Manage voice clones")).not.toBeInTheDocument();
   });
+
+  it("keeps MiniMax voice management inside Voice & synthesis with distinct add, rename, and delete flows", async () => {
+    localStorage.setItem("minimaxVoiceClones", JSON.stringify([{ id: "narrator-1", name: "Original narrator", model: "speech-2.8-hd" }]));
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "minimax" } });
+
+    const libraryLabel = await screen.findByText("Custom voice library");
+    const library = libraryLabel.closest("details");
+    const voiceSection = screen.getByRole("heading", { name: "Voice & synthesis" }).closest("section");
+    const providerSection = screen.getByRole("heading", { name: "Provider & access" }).closest("section");
+    expect(voiceSection).toContainElement(library);
+    expect(providerSection).not.toContainElement(library);
+
+    fireEvent.click(libraryLabel);
+    await waitFor(() => expect(screen.getByText("Original narrator")).toBeVisible());
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText(/Display name/), { target: { value: "Studio narrator" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+    expect(screen.getByRole("option", { name: "Studio narrator (speech-2.8-hd)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.getByText(/permanently removes the voice/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add new voice" }));
+    expect(screen.getByLabelText("Voice name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Source audio")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create voice" })).toBeInTheDocument();
+  });
 });

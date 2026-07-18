@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { MINIMAX_LANGUAGES, MINIMAX_MODELS, PROVIDER_ORDER, PROVIDERS } from "../config/providers";
+import { MINIMAX_MODELS, PROVIDER_ORDER, PROVIDERS } from "../config/providers";
 import type { useBigTtsController } from "../hooks/useBigTtsController";
 import { Button, Checkbox, FieldPanel } from "./ui/Controls";
 import { Icon } from "./ui/Icon";
@@ -69,40 +68,13 @@ function ProviderBalance({ controller }: { controller: Controller }) {
 
 function MiniMaxSetup({ controller }: { controller: Controller }) {
   const { state, actions } = controller;
-  const selected = state.minimaxVoices.find((voice) => voice.id === state.voice);
-  const [name, setName] = useState("");
-  const [previewText, setPreviewText] = useState("");
-  const [languageModel, setLanguageModel] = useState("auto");
-  const [promptText, setPromptText] = useState("");
-  const [validationText, setValidationText] = useState("");
-  const [source, setSource] = useState<File>();
-  const [prompt, setPrompt] = useState<File>();
-  useEffect(() => setName(selected?.name || ""), [selected]);
-  return <>
+  return (
     <FieldPanel id="minimaxModelPanel" className="provider-model-panel" live>
       <label htmlFor="minimaxModel">MiniMax speech model</label>
       <select id="minimaxModel" value={state.minimaxModel} onChange={(event) => actions.setMinimaxModel(event.target.value)}>{MINIMAX_MODELS.map((model) => <option key={model}>{model}</option>)}</select>
       <span>Choose the MiniMax model used for both voice cloning preview and narration.</span>
     </FieldPanel>
-    <details id="minimaxVoiceClonePanel" className="voice-tools-panel">
-      <summary><span><Icon name="user" />Manage voice clones</span><span>{state.minimaxVoices.length} available</span></summary>
-      <FieldPanel className="voice-clone-panel" live>
-      <div className="voice-clone-header"><div><strong>MiniMax voice clones</strong><span>Loaded {state.minimaxVoices.length.toLocaleString()} available MiniMax voice clone{state.minimaxVoices.length === 1 ? "" : "s"}.</span></div><Button type="button" onClick={() => actions.setCredential(state.credentials.minimax)}>Refresh voices</Button></div>
-      <div className="voice-clone-form">
-        <label><span>Voice name / ID</span><input type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="Narrator voice" /></label>
-        <label><span>Clone preview text</span><input type="text" value={previewText} onChange={(event) => setPreviewText(event.target.value)} placeholder="A gentle breeze passes over the soft grass." /></label>
-        <label><span>Language/accent recognition</span><select value={languageModel} onChange={(event) => setLanguageModel(event.target.value)}>{MINIMAX_LANGUAGES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        <label><span>Prompt text for accent/style (optional)</span><input type="text" value={promptText} onChange={(event) => setPromptText(event.target.value)} placeholder="Text spoken in the prompt audio" /></label>
-        <label><span>Source transcript check (optional)</span><input type="text" maxLength={200} value={validationText} onChange={(event) => setValidationText(event.target.value)} placeholder="Transcript of the source audio" /></label>
-        <label><span>Source audio</span><input type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav" onChange={(event) => setSource(event.target.files?.[0])} /></label>
-        <label><span>Prompt audio (optional, &lt;8s)</span><input type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav" onChange={(event) => setPrompt(event.target.files?.[0])} /></label>
-        <Button type="button" className="primary" disabled={state.operationBusy} onClick={() => void actions.saveMinimaxClone({ name, previewText, languageModel, promptText, validationText, source, prompt })}><Icon name="check" />Create voice clone</Button>
-        <Button type="button" disabled={!selected || state.operationBusy} onClick={() => void actions.deleteMinimaxClone()}><Icon name="trash" />Delete selected</Button>
-      </div>
-      <p className="voice-clone-policy">Only clone voices you have permission to use. Prompt audio and text can improve accent, language, and speaking-style matching.</p>
-      </FieldPanel>
-    </details>
-  </>;
+  );
 }
 
 function GoogleSetup({ controller }: { controller: Controller }) {

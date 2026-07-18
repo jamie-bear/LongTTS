@@ -1,5 +1,5 @@
-import type { ReactNode, RefObject } from "react";
-import { isOpenRouterPcmModel, SEGMENT_OPTIONS } from "../config/providers";
+import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
+import { isOpenRouterPcmModel, MINIMAX_LANGUAGES, SEGMENT_OPTIONS } from "../config/providers";
 import type { useBigTtsController } from "../hooks/useBigTtsController";
 import { ProviderSetup } from "./ProviderSetup";
 import { Button, Checkbox, SelectField } from "./ui/Controls";
@@ -7,16 +7,12 @@ import { Icon } from "./ui/Icon";
 
 type Controller = ReturnType<typeof useBigTtsController>;
 
-export function NarrationPanel({ controller, audioRef }: { controller: Controller; audioRef: RefObject<HTMLAudioElement | null> }) {
+export function SettingsPanel({ controller }: { controller: Controller }) {
   const { state, providerConfig, voiceOptions, hasVoiceGenderMetadata, limits, actions } = controller;
-  const busy = state.phase === "connecting" || state.phase === "generating";
-  const pcm = state.provider === "gemini" || state.provider === "google" || state.provider === "resemble" || (state.provider === "openrouter" && isOpenRouterPcmModel(state.openrouterModel));
-  const extension = state.stitchedAudio?.extension.toUpperCase() || (pcm ? "WAV" : "MP3");
-  const partial = state.audioAvailable && state.phase !== "completed";
   const lowLatencyAvailable = Boolean(providerConfig.supportsLowLatency);
   const textNormalizationAvailable = Boolean(providerConfig.supportsTextNormalization);
   const unavailableCapabilityCount = Number(!lowLatencyAvailable) + Number(!textNormalizationAvailable);
-  return <aside className="control-panel" aria-label="Narration controls">
+  return <aside className="settings-panel" aria-label="Narration setup">
     <section className="card setup-card" aria-labelledby="provider-heading">
       <div className="compact-heading"><div className="heading-icon"><Icon name="key" /></div><div><p className="eyebrow">Connection</p><h2 id="provider-heading">Provider & access</h2></div></div>
       <ProviderSetup controller={controller} />
@@ -26,6 +22,7 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
       <div className="compact-heading"><div className="heading-icon"><Icon name="settings" /></div><div><p className="eyebrow">Configuration</p><h2 id="settings-heading">Voice & synthesis</h2></div></div>
       <form className="settings" aria-label="Narration settings" onSubmit={(event) => event.preventDefault()}>
         <SelectField id="voice" label="Voice" options={voiceOptions} value={state.voice} onChange={(event) => actions.setVoice(event.target.value)} helper={hasVoiceGenderMetadata ? "Gender is shown as text only where provider metadata is available." : undefined} />
+        {state.provider === "minimax" && <MiniMaxVoiceManager controller={controller} />}
         <div className="field-grid"><SelectField id="language" label="Language" options={providerConfig.languages} value={state.language} onChange={(event) => actions.setLanguage(event.target.value)} /><SelectField id="segmentChars" label="Segment size" options={SEGMENT_OPTIONS.map((option) => ({ ...option, disabled: Number(option.value) > limits.maxSegmentChars }))} value={state.segmentChars} onChange={(event) => actions.setSegmentChars(Number(event.target.value))} helper={`${state.segmentChars.toLocaleString()} characters per request`} /></div>
         <div className={`setting-block ${providerConfig.supportsSpeed ? "" : "is-unavailable"}`}>
           <div className="setting-title"><label htmlFor="speed">Reading speed</label>{providerConfig.supportsSpeed ? <output htmlFor="speed">{state.speed.toFixed(2)}×</output> : <span className="availability-badge">Unavailable</span>}</div>
@@ -45,7 +42,16 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
         </div>
       </form>
     </section>
+  </aside>;
+}
 
+export function NarrationOutput({ controller, audioRef }: { controller: Controller; audioRef: RefObject<HTMLAudioElement | null> }) {
+  const { state, actions } = controller;
+  const busy = state.phase === "connecting" || state.phase === "generating";
+  const pcm = state.provider === "gemini" || state.provider === "google" || state.provider === "resemble" || (state.provider === "openrouter" && isOpenRouterPcmModel(state.openrouterModel));
+  const extension = state.stitchedAudio?.extension.toUpperCase() || (pcm ? "WAV" : "MP3");
+  const partial = state.audioAvailable && state.phase !== "completed";
+  return <aside className="output-panel" aria-label="Narration output">
     <section className="card output-card" aria-labelledby="output-heading">
       <div className="compact-heading output-heading"><div className="heading-icon"><Icon name="audio" /></div><div><p className="eyebrow">Output</p><h2 id="output-heading">Narration</h2></div><span className={`phase-badge phase-${state.phase}`}>{state.phase}</span></div>
       <div className="progress-block" aria-live="polite" aria-atomic="true"><div className="progress-copy"><span>{state.status}</span><span>{state.currentSegment} / {state.totalSegments} segments</span></div><progress value={state.progress} max={100} aria-label="Narration generation progress" /></div>
@@ -55,6 +61,82 @@ export function NarrationPanel({ controller, audioRef }: { controller: Controlle
       <Button type="button" className="download-button" disabled={!state.audioAvailable} onClick={actions.download}><Icon name="download" />Download {partial ? "partial " : ""}{extension}<span>{state.audioAvailable ? "Includes all audio received so far" : "Available as soon as audio is received"}</span></Button>
     </section>
   </aside>;
+}
+
+function MiniMaxVoiceManager({ controller }: { controller: Controller }) {
+  const { state, actions } = controller;
+  const selected = state.minimaxVoices.find((voice) => voice.id === state.voice);
+  const [mode, setMode] = useState<"idle" | "create" | "rename" | "delete">("idle");
+  const [name, setName] = useState("");
+  const [previewText, setPreviewText] = useState("");
+  const [languageModel, setLanguageModel] = useState("auto");
+  const [promptText, setPromptText] = useState("");
+  const [validationText, setValidationText] = useState("");
+  const [source, setSource] = useState<File>();
+  const [prompt, setPrompt] = useState<File>();
+  const formId = useId();
+
+  useEffect(() => {
+    setMode("idle");
+    setName(selected?.name || "");
+  }, [selected?.id, selected?.name]);
+
+  const beginCreate = () => {
+    setName("");
+    setPreviewText("");
+    setLanguageModel("auto");
+    setPromptText("");
+    setValidationText("");
+    setSource(undefined);
+    setPrompt(undefined);
+    setMode("create");
+  };
+
+  return <details id="minimaxVoiceClonePanel" className="voice-tools-panel">
+    <summary><span><Icon name="user" />Custom voice library</span><span>{state.minimaxVoices.length} voice{state.minimaxVoices.length === 1 ? "" : "s"}</span></summary>
+    <div className="voice-library" aria-live="polite">
+      <div className="voice-library-toolbar">
+        <div><strong>MiniMax voices</strong><span>Choose a voice above, or manage your library here.</span></div>
+        <Button type="button" onClick={() => actions.setCredential(state.credentials.minimax)}>Refresh</Button>
+      </div>
+
+      {selected ? <div className="selected-voice">
+        <div className="selected-voice-copy"><span>Selected voice</span><strong>{selected.name}</strong><code>{selected.id}</code>{selected.model && <small>{selected.model}</small>}</div>
+        <div className="voice-action-row">
+          <Button type="button" disabled={state.operationBusy} onClick={() => { setName(selected.name); setMode("rename"); }}><Icon name="settings" />Rename</Button>
+          <Button type="button" className="danger-button" disabled={state.operationBusy} onClick={() => setMode("delete")}><Icon name="trash" />Delete</Button>
+        </div>
+      </div> : <p className="voice-library-empty">No custom voices found. Add one to start narrating with MiniMax.</p>}
+
+      {mode === "rename" && selected && <div className="voice-inline-editor">
+        <label htmlFor={`${formId}-display-name`}>Display name <span>Saved in this browser</span></label>
+        <input id={`${formId}-display-name`} type="text" value={name} onChange={(event) => setName(event.target.value)} />
+        <div className="voice-inline-actions"><Button type="button" onClick={() => setMode("idle")}>Cancel</Button><Button type="button" className="primary" onClick={() => { actions.renameMinimaxClone(selected.id, name); setMode("idle"); }}>Save name</Button></div>
+      </div>}
+
+      {mode === "delete" && selected && <div className="voice-delete-confirm" role="alert">
+        <div><strong>Delete “{selected.name}”?</strong><span>This permanently removes the voice from MiniMax. This cannot be undone.</span></div>
+        <div className="voice-inline-actions"><Button type="button" onClick={() => setMode("idle")}>Cancel</Button><Button type="button" className="danger-button-solid" disabled={state.operationBusy} onClick={() => void actions.deleteMinimaxClone()}>{state.operationBusy ? "Deleting…" : "Delete voice"}</Button></div>
+      </div>}
+
+      {mode !== "create" && <Button type="button" className="add-voice-button" onClick={beginCreate}><Icon name="check" />Add new voice</Button>}
+
+      {mode === "create" && <div className="voice-create-panel">
+        <div className="voice-create-heading"><div><strong>Add a custom voice</strong><span>Source audio is required. Accent and style guidance are optional.</span></div><Button type="button" onClick={() => setMode("idle")}>Cancel</Button></div>
+        <div className="voice-clone-form">
+          <label htmlFor={`${formId}-name`}><span>Voice name</span><input id={`${formId}-name`} type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="Narrator voice" /></label>
+          <label htmlFor={`${formId}-language`}><span>Language/accent</span><select id={`${formId}-language`} value={languageModel} onChange={(event) => setLanguageModel(event.target.value)}>{MINIMAX_LANGUAGES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="voice-form-wide" htmlFor={`${formId}-preview`}><span>Preview text</span><input id={`${formId}-preview`} type="text" value={previewText} onChange={(event) => setPreviewText(event.target.value)} placeholder="A gentle breeze passes over the soft grass." /></label>
+          <label className="voice-form-wide" htmlFor={`${formId}-source`}><span>Source audio</span><input id={`${formId}-source`} type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav" onChange={(event) => setSource(event.target.files?.[0])} /></label>
+          <label className="voice-form-wide" htmlFor={`${formId}-transcript`}><span>Source transcript check <em>Optional</em></span><input id={`${formId}-transcript`} type="text" maxLength={200} value={validationText} onChange={(event) => setValidationText(event.target.value)} placeholder="Transcript of the source audio" /></label>
+          <label htmlFor={`${formId}-prompt-audio`}><span>Style prompt audio <em>Optional, under 8s</em></span><input id={`${formId}-prompt-audio`} type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav" onChange={(event) => setPrompt(event.target.files?.[0])} /></label>
+          <label htmlFor={`${formId}-prompt-text`}><span>Style prompt transcript <em>Optional</em></span><input id={`${formId}-prompt-text`} type="text" value={promptText} onChange={(event) => setPromptText(event.target.value)} placeholder="Text spoken in prompt audio" /></label>
+        </div>
+        <p className="voice-clone-policy">Only clone voices you have permission to use. Prompt audio and its transcript must be provided together.</p>
+        <Button type="button" className="primary create-voice-button" disabled={state.operationBusy} onClick={() => void actions.saveMinimaxClone({ name, previewText, languageModel, promptText, validationText, source, prompt })}><Icon name="check" />{state.operationBusy ? "Creating voice…" : "Create voice"}</Button>
+      </div>}
+    </div>
+  </details>;
 }
 
 function Capability({ available, unavailableText, children }: { available: boolean; unavailableText: string; children: ReactNode }) {

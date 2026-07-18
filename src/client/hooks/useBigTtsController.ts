@@ -231,6 +231,15 @@ export function useBigTtsController(audioRef: React.RefObject<HTMLAudioElement |
     finally { dispatch({ type: "patch", patch: { operationBusy: false } }); }
   }, [setStatus]);
 
+  const renameMinimaxClone = useCallback((voiceId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return setStatus("Enter a display name for the MiniMax voice clone.");
+    const current = stateRef.current;
+    const voices = current.minimaxVoices.map((voice) => voice.id === voiceId ? { ...voice, name: trimmed } : voice);
+    writeVoiceClones("minimaxVoiceClones", voices);
+    dispatch({ type: "patch", patch: { minimaxVoices: voices, status: `Voice display name updated to ${trimmed}.` } });
+  }, [setStatus]);
+
   const handleServerEvent = useCallback((event: ServerEvent) => {
     if (event.type === "meta") {
       audioEngineRef.current?.configure(event.audioEncoding, event.sampleRate, event.channels);
@@ -337,7 +346,7 @@ export function useBigTtsController(audioRef: React.RefObject<HTMLAudioElement |
       loadSample: () => dispatch({ type: "patch", patch: { text: SAMPLE_TEXT } }),
       clearText: () => dispatch({ type: "patch", patch: { text: "" } }),
       loadTextFile: async (file: File) => dispatch({ type: "patch", patch: { text: await file.text(), status: `Loaded ${file.name}.` } }),
-      saveMinimaxClone, deleteMinimaxClone,
+      saveMinimaxClone, deleteMinimaxClone, renameMinimaxClone,
       connectGoogle, disconnectGoogle, refreshGoogle, startNarration, stopNarration, download
     }
   };
